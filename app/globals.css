@@ -122,6 +122,7 @@ button:disabled { cursor: not-allowed; opacity: 0.65; }
 
 @media (max-width: 1080px) {
   .studio-shell { grid-template-columns: minmax(220px, var(--left-column-width)) minmax(0, 1fr); grid-template-areas: "topbar topbar" "directory editor"; }
+  .tablet-context-button { display: inline-flex; align-items: center; }
   .context-sidebar { position: fixed; z-index: 10; top: 64px; right: 0; bottom: 0; width: min(360px, 88vw); box-shadow: -10px 0 30px rgba(0,0,0,.08); transform: translateX(102%); transition: transform .2s ease; }
   .context-sidebar.is-mobile-open { transform: translateX(0); background: var(--paper); }
 }

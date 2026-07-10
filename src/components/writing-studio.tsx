@@ -320,7 +320,7 @@ export function WritingStudio({ repository: suppliedRepository }: WritingStudioP
         <div className="topbar-actions">
           <span className={`network-state ${online ? '' : 'is-offline'}`}>{online ? '本机持久化' : '离线写作中'}</span>
           <button className="mobile-panel-button" onClick={() => setMobilePanel('directory')} type="button">目录</button>
-          <button className="mobile-panel-button" onClick={() => setMobilePanel('context')} type="button">备注</button>
+          <button className="mobile-panel-button tablet-context-button" onClick={() => setMobilePanel('context')} type="button">备注</button>
           <button className="quiet-button" onClick={() => setFocusMode((value) => !value)} type="button">
             {focusMode ? '退出专注' : '专注模式'}
           </button>
