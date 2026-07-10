@@ -1,0 +1,10 @@
+node_modules/
+.next/
+out/
+*.log
+.env*
+!.env.example
+.codex/
+.playwright-cli/
+output/
+tsconfig.tsbuildinfo
