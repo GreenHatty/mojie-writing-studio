@@ -1,10 +1,11 @@
-import { createReadStream, promises as fs } from 'node:fs';
+import { createReadStream, existsSync, promises as fs } from 'node:fs';
 import { createServer } from 'node:http';
-import { dirname, extname, resolve, sep } from 'node:path';
-import { fileURLToPath } from 'node:url';
+import { extname, resolve, sep } from 'node:path';
 
-const serverDirectory = dirname(fileURLToPath(import.meta.url));
-const publicDirectory = resolve(serverDirectory, '..', 'public');
+const publicDirectory = [
+  resolve(process.cwd(), 'dist', 'public'),
+  resolve(process.cwd(), 'public')
+].find(existsSync) ?? resolve(process.cwd(), 'dist', 'public');
 const contentTypes = {
   '.css': 'text/css; charset=utf-8',
   '.html': 'text/html; charset=utf-8',
