@@ -8,6 +8,7 @@
     "build": "next build && node scripts/prepare-dist.mjs",
     "start": "node dist/server/index.js",
     "test": "vitest run",
+    "test:static-package": "node scripts/verify-static-package.mjs",
     "test:server-entry": "node scripts/verify-server-entry.mjs",
     "test:watch": "vitest",
     "typecheck": "tsc --noEmit"
