@@ -4,12 +4,11 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "dev": "next dev",
-    "build": "next build && node scripts/prepare-dist.mjs",
-    "start": "node dist/server/index.js",
+    "dev": "vinext dev",
+    "build": "vinext build && node scripts/prepare-dist.mjs",
+    "start": "vinext start",
     "test": "vitest run",
-    "test:static-package": "node scripts/verify-static-package.mjs",
-    "test:server-entry": "node scripts/verify-server-entry.mjs",
+    "test:worker-entry": "node scripts/verify-worker-entry.mjs",
     "test:watch": "vitest",
     "typecheck": "tsc --noEmit"
   },
@@ -23,11 +22,14 @@
     "react-dom": "^19.2.6"
   },
   "devDependencies": {
+    "@cloudflare/vite-plugin": "^1.44.0",
+    "@testing-library/dom": "^10.4.1",
     "@testing-library/jest-dom": "^6.6.3",
     "@testing-library/react": "^16.0.1",
     "@types/node": "^22.15.3",
     "@types/react": "^19.2.17",
     "@types/react-dom": "^19.2.3",
+    "@vinext/cloudflare": "^1.0.0-beta.0",
     "@vitejs/plugin-react": "^5.2.0",
     "@vitejs/plugin-rsc": "^0.5.27",
     "fake-indexeddb": "^6.0.0",
