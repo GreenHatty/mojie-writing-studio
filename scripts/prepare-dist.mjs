@@ -1,8 +1,8 @@
-import { cpSync, existsSync, rmSync } from 'node:fs';
+import { copyFileSync, existsSync, mkdirSync } from 'node:fs';
 
-if (!existsSync('out')) {
-  throw new Error('Expected Next static export output in ./out');
+if (!existsSync('dist/server/index.js')) {
+  throw new Error('Expected Vinext server output in ./dist/server/index.js');
 }
 
-rmSync('dist', { force: true, recursive: true });
-cpSync('out', 'dist', { recursive: true });
+mkdirSync('dist/.openai', { recursive: true });
+copyFileSync('.openai/hosting.json', 'dist/.openai/hosting.json');
