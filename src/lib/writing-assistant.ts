@@ -111,7 +111,7 @@ export function tightenChineseText(text: string): string {
   return text
     .replace(/不由得/gu, '')
     .replace(/慢慢地(?=[抬转走看望伸])/gu, '')
-    .replace(/然后(?=[，,])/gu, '')
+    .replace(/([，,])然后/gu, '$1')
     .replace(/，\s*，/gu, '，')
     .replace(/\s+/gu, ' ')
     .replace(/^\s+|\s+$/gu, '');
