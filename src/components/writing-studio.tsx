@@ -5,21 +5,27 @@ import { createChapterAutosaver, type ChapterAutosaver, type AutosaveState } fro
 import { countWritingCharacters, type ChapterSnapshot } from '../lib/writing';
 import {
   createWritingRepository,
-  type ChapterNote,
   type ProfileSettings,
   type StoredChapter,
   type WorkDetail,
   type WorkKind,
+  type WorkRecord,
   type WritingRepository
 } from '../lib/repository';
 import { CreateWorkForm } from './create-work-form';
+import { ImportExportPanel } from './import-export-panel';
+import { LessonsPanel } from './lessons-panel';
+import { ProjectPanel } from './project-panel';
 import { RichTextEditor } from './rich-text-editor';
+import { TemplateLibrary } from './template-library';
+import { ToolsPanel } from './tools-panel';
+import { WorkspaceDashboard } from './workspace-dashboard';
 
 type WritingStudioProps = {
   repository?: WritingRepository;
 };
 
-type RightPanel = 'note' | 'versions';
+type RightPanel = 'note' | 'versions' | 'project' | 'tools' | 'templates' | 'lessons' | 'export';
 
 const SETTINGS_FALLBACK: ProfileSettings = {
   ownerId: 'site-owner',
@@ -49,12 +55,15 @@ function formatCount(value: number): string {
 
 export function WritingStudio({ repository: suppliedRepository }: WritingStudioProps) {
   const [repository, setRepository] = useState<WritingRepository | null>(suppliedRepository ?? null);
+  const [works, setWorks] = useState<WorkRecord[]>([]);
   const [activeWork, setActiveWork] = useState<WorkDetail | null>(null);
   const [activeChapterId, setActiveChapterId] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
+  const [openingWork, setOpeningWork] = useState(false);
   const [creating, setCreating] = useState(false);
   const [chapterTitle, setChapterTitle] = useState('');
   const [editorDocument, setEditorDocument] = useState('<p></p>');
+  const [livePlainText, setLivePlainText] = useState('');
   const [liveWordCount, setLiveWordCount] = useState(0);
   const [saveState, setSaveState] = useState<AutosaveState>('idle');
   const [note, setNote] = useState('');
@@ -84,15 +93,13 @@ export function WritingStudio({ repository: suppliedRepository }: WritingStudioP
     const storage: WritingRepository = repository;
     let cancelled = false;
     async function bootstrap() {
-      const [works, loadedSettings, writtenToday] = await Promise.all([
+      const [workRecords, loadedSettings, writtenToday] = await Promise.all([
         storage.listWorks(),
         storage.getSettings(),
         storage.getTodayWritingCount(today())
       ]);
-      const work = works[0] ? await storage.getWork(works[0].id) : null;
       if (cancelled) return;
-      setActiveWork(work);
-      setActiveChapterId(work?.volumes[0]?.chapters[0]?.id ?? null);
+      setWorks(workRecords);
       setSettings(loadedSettings);
       setTodayCount(writtenToday);
       setOnline(typeof navigator === 'undefined' ? true : navigator.onLine);
@@ -120,6 +127,7 @@ export function WritingStudio({ repository: suppliedRepository }: WritingStudioP
       if (!current) return current;
       return {
         ...current,
+        updatedAt: replacement.updatedAt,
         volumes: current.volumes.map((volume) => ({
           ...volume,
           chapters: volume.chapters.map((chapter) => (chapter.id === replacement.id ? replacement : chapter))
@@ -139,6 +147,7 @@ export function WritingStudio({ repository: suppliedRepository }: WritingStudioP
     const chapter = activeChapter;
     let cancelled = false;
     setChapterTitle(chapter.title);
+    setLivePlainText(chapter.plainText);
     setLiveWordCount(chapter.wordCount);
     setDraftNotice('');
     const autosaver = createChapterAutosaver({
@@ -147,6 +156,7 @@ export function WritingStudio({ repository: suppliedRepository }: WritingStudioP
       onStateChange: setSaveState,
       onSaved: (savedChapter) => {
         replaceChapter(savedChapter);
+        setLivePlainText(savedChapter.plainText);
         setLiveWordCount(savedChapter.wordCount);
         void storage.getTodayWritingCount(today()).then(setTodayCount);
       },
@@ -167,6 +177,7 @@ export function WritingStudio({ repository: suppliedRepository }: WritingStudioP
         const preferredDocument = draft?.content ?? chapter.content;
         const preferredText = draft?.plainText ?? chapter.plainText;
         setEditorDocument(preferredDocument);
+        setLivePlainText(preferredText);
         setLiveWordCount(countWritingCharacters(preferredText));
         setNote(notes[0]?.body ?? '');
         setSnapshots(versionHistory);
@@ -189,14 +200,46 @@ export function WritingStudio({ repository: suppliedRepository }: WritingStudioP
     };
   }, [activeChapter?.id, repository]);
 
+  async function openWork(workId: string) {
+    if (!repository) return;
+    setOpeningWork(true);
+    try {
+      const work = await repository.getWork(workId);
+      setActiveWork(work);
+      setActiveChapterId(work?.volumes[0]?.chapters[0]?.id ?? null);
+      setRightPanel('note');
+      setSearch('');
+    } finally {
+      setOpeningWork(false);
+    }
+  }
+
   async function createWork(input: { title: string; kind: WorkKind }) {
     if (!repository) return;
     setCreating(true);
-    const created = await repository.createWork(input);
-    const work = await repository.getWork(created.work.id);
-    setActiveWork(work);
-    setActiveChapterId(created.chapter.id);
-    setCreating(false);
+    try {
+      const created = await repository.createWork(input);
+      const [work, workRecords] = await Promise.all([
+        repository.getWork(created.work.id),
+        repository.listWorks()
+      ]);
+      setWorks(workRecords);
+      setActiveWork(work);
+      setActiveChapterId(created.chapter.id);
+      setRightPanel('note');
+    } finally {
+      setCreating(false);
+    }
+  }
+
+  async function returnToDashboard() {
+    if (!repository) return;
+    await autosaverRef.current?.flush();
+    setWorks(await repository.listWorks());
+    setActiveWork(null);
+    setActiveChapterId(null);
+    setMobilePanel('none');
+    setFocusMode(false);
   }
 
   async function switchChapter(chapterId: string) {
@@ -209,6 +252,7 @@ export function WritingStudio({ repository: suppliedRepository }: WritingStudioP
     if (!activeWork || !repository) return;
     const volume = activeWork.volumes[activeWork.volumes.length - 1];
     if (!volume) return;
+    await autosaverRef.current?.flush();
     const chapter = await repository.createChapter(activeWork.id, volume.id);
     const refreshed = await repository.getWork(activeWork.id);
     setActiveWork(refreshed);
@@ -223,6 +267,7 @@ export function WritingStudio({ repository: suppliedRepository }: WritingStudioP
 
   function updateEditor(content: string, plainText: string) {
     setEditorDocument(content);
+    setLivePlainText(plainText);
     setLiveWordCount(countWritingCharacters(plainText));
     void autosaverRef.current?.queue(content, plainText).catch(() => setSaveState('error'));
   }
@@ -246,6 +291,7 @@ export function WritingStudio({ repository: suppliedRepository }: WritingStudioP
     const restored = await repository.restoreSnapshot(activeChapter.id, snapshot.id);
     replaceChapter(restored);
     setEditorDocument(restored.content);
+    setLivePlainText(restored.plainText);
     setLiveWordCount(restored.wordCount);
     setEditorReset((value) => value + 1);
     await refreshSnapshots(activeChapter.id);
@@ -256,6 +302,7 @@ export function WritingStudio({ repository: suppliedRepository }: WritingStudioP
     if (!activeChapter || !repository) return;
     await repository.clearDraft(activeChapter.id);
     setEditorDocument(activeChapter.content);
+    setLivePlainText(activeChapter.plainText);
     setLiveWordCount(activeChapter.wordCount);
     setDraftNotice('已使用已保存版本。');
     setEditorReset((value) => value + 1);
@@ -270,7 +317,7 @@ export function WritingStudio({ repository: suppliedRepository }: WritingStudioP
 
   if (loading || !repository) return <main className="app-loading">正在打开你的写作台…</main>;
 
-  if (!activeWork) {
+  if (!activeWork && works.length === 0) {
     return (
       <main className="empty-workspace">
         <div className="brand-mark" aria-hidden="true">墨</div>
@@ -279,6 +326,18 @@ export function WritingStudio({ repository: suppliedRepository }: WritingStudioP
         <p className="empty-copy">从一个书名开始。目录、草稿与版本会在本机安全保存。</p>
         <CreateWorkForm busy={creating} onCreate={createWork} />
       </main>
+    );
+  }
+
+  if (!activeWork) {
+    return (
+      <WorkspaceDashboard
+        creating={creating || openingWork}
+        onCreate={createWork}
+        onOpen={(workId) => void openWork(workId)}
+        todayCount={todayCount}
+        works={works}
+      />
     );
   }
 
@@ -309,7 +368,7 @@ export function WritingStudio({ repository: suppliedRepository }: WritingStudioP
   return (
     <main className={`studio-shell theme-${settings.theme} ${focusMode ? 'is-focused' : ''}`} style={visualStyle}>
       <header className="studio-topbar">
-        <button aria-label="返回工作台" className="brand-lockup" onClick={() => setActiveWork(null)} type="button">
+        <button aria-label="返回工作台" className="brand-lockup" onClick={() => void returnToDashboard()} type="button">
           <span className="brand-mark">墨</span>
           <span>墨界</span>
         </button>
@@ -320,7 +379,7 @@ export function WritingStudio({ repository: suppliedRepository }: WritingStudioP
         <div className="topbar-actions">
           <span className={`network-state ${online ? '' : 'is-offline'}`}>{online ? '本机持久化' : '离线写作中'}</span>
           <button className="mobile-panel-button" onClick={() => setMobilePanel('directory')} type="button">目录</button>
-          <button className="mobile-panel-button tablet-context-button" onClick={() => setMobilePanel('context')} type="button">备注</button>
+          <button className="mobile-panel-button tablet-context-button" onClick={() => setMobilePanel('context')} type="button">工具</button>
           <button className="quiet-button" onClick={() => setFocusMode((value) => !value)} type="button">
             {focusMode ? '退出专注' : '专注模式'}
           </button>
@@ -369,11 +428,25 @@ export function WritingStudio({ repository: suppliedRepository }: WritingStudioP
               <option value="dark">深色</option>
             </select>
           </label>
+          <label>
+            <span>编辑宽度</span>
+            <select onChange={(event) => void updateSettings({ editorWidth: event.target.value as ProfileSettings['editorWidth'] })} value={settings.editorWidth}>
+              <option value="narrow">窄</option>
+              <option value="comfortable">舒适</option>
+              <option value="wide">宽</option>
+            </select>
+          </label>
           <div className="font-controls">
             <span>字号</span>
             <button aria-label="减小字号" onClick={() => void updateSettings({ fontSize: Math.max(14, settings.fontSize - 1) })} type="button">A−</button>
             <span>{settings.fontSize}</span>
             <button aria-label="增大字号" onClick={() => void updateSettings({ fontSize: Math.min(28, settings.fontSize + 1) })} type="button">A＋</button>
+          </div>
+          <div className="font-controls">
+            <span>行距</span>
+            <button aria-label="减小行距" onClick={() => void updateSettings({ lineHeight: Math.max(1.4, Number((settings.lineHeight - 0.1).toFixed(1))) })} type="button">−</button>
+            <span>{settings.lineHeight.toFixed(1)}</span>
+            <button aria-label="增大行距" onClick={() => void updateSettings({ lineHeight: Math.min(2.6, Number((settings.lineHeight + 0.1).toFixed(1))) })} type="button">＋</button>
           </div>
         </div>
       </aside>
@@ -399,18 +472,25 @@ export function WritingStudio({ repository: suppliedRepository }: WritingStudioP
           <span>{formatCount(liveWordCount)} 字</span>
           <span>全书 {formatCount(totalWords(activeWork))} 字</span>
           <span>今日新增 {formatCount(todayCount)} 字</span>
+          <span>段落 {livePlainText ? livePlainText.split(/\n+/u).filter(Boolean).length : 0}</span>
+          <span>预计阅读 {Math.max(1, Math.ceil(liveWordCount / 500))} 分钟</span>
           <span className={`save-state save-${saveState}`}>{saveLabel[saveState]}</span>
         </footer>
       </section>
 
       <aside aria-label="章节辅助信息" className={`context-sidebar ${mobilePanel === 'context' ? 'is-mobile-open' : ''}`}>
         <div className="context-tabs" role="tablist">
-          <button aria-selected={rightPanel === 'note'} onClick={() => setRightPanel('note')} role="tab" type="button">本章备注</button>
-          <button aria-selected={rightPanel === 'versions'} onClick={() => setRightPanel('versions')} role="tab" type="button">版本记录</button>
+          <button aria-selected={rightPanel === 'note'} onClick={() => setRightPanel('note')} role="tab" type="button">备注</button>
+          <button aria-selected={rightPanel === 'versions'} onClick={() => setRightPanel('versions')} role="tab" type="button">版本</button>
+          <button aria-selected={rightPanel === 'project'} onClick={() => setRightPanel('project')} role="tab" type="button">设定</button>
+          <button aria-selected={rightPanel === 'tools'} onClick={() => setRightPanel('tools')} role="tab" type="button">检查</button>
+          <button aria-selected={rightPanel === 'templates'} onClick={() => setRightPanel('templates')} role="tab" type="button">模板</button>
+          <button aria-selected={rightPanel === 'lessons'} onClick={() => setRightPanel('lessons')} role="tab" type="button">课堂</button>
+          <button aria-selected={rightPanel === 'export'} onClick={() => setRightPanel('export')} role="tab" type="button">导出</button>
         </div>
         {rightPanel === 'note' ? (
           <section className="note-panel">
-            <p>备注不会进入正文，也不会出现在未来的导出内容中。</p>
+            <p>备注不会进入正文，也不会出现在发布用导出内容中。</p>
             <textarea
               aria-label="本章备注"
               onBlur={() => void saveNote()}
@@ -419,7 +499,8 @@ export function WritingStudio({ repository: suppliedRepository }: WritingStudioP
               value={note}
             />
           </section>
-        ) : (
+        ) : null}
+        {rightPanel === 'versions' ? (
           <section className="versions-panel">
             <p>恢复前会自动保留当前内容。</p>
             {snapshots.length ? (
@@ -435,10 +516,15 @@ export function WritingStudio({ repository: suppliedRepository }: WritingStudioP
                 ))}
               </ul>
             ) : (
-              <div className="context-empty">尚无版本。写作五分钟后会自动生成快照，也可手动保存。</div>
+              <div className="context-empty">尚无版本。可点击正文上方“保存版本”建立关键快照。</div>
             )}
           </section>
-        )}
+        ) : null}
+        {rightPanel === 'project' ? <ProjectPanel repository={repository} workId={activeWork.id} /> : null}
+        {rightPanel === 'tools' ? <ToolsPanel text={livePlainText} /> : null}
+        {rightPanel === 'templates' ? <TemplateLibrary /> : null}
+        {rightPanel === 'lessons' ? <LessonsPanel /> : null}
+        {rightPanel === 'export' ? <ImportExportPanel work={activeWork} /> : null}
       </aside>
     </main>
   );
