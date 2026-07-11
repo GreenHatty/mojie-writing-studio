@@ -184,7 +184,7 @@ export function WritingStudio({ repository: suppliedRepository }: WritingStudioP
     void loadChapterContext();
     return () => {
       cancelled = true;
-      autosaver.dispose();
+      void autosaver.dispose();
       if (autosaverRef.current === autosaver) autosaverRef.current = null;
     };
   }, [activeChapter?.id, repository]);

@@ -39,4 +39,19 @@ describe('createChapterAutosaver', () => {
     expect(states).toContain('saving');
     expect(states).toContain('saved');
   });
+
+  it('flushes pending content when disposed', async () => {
+    const repository = createWritingRepository({
+      databaseName: `autosave-dispose-${crypto.randomUUID()}`,
+      ownerId: 'owner-1'
+    });
+    repositories.push(repository);
+    const created = await repository.createWork({ title: '归档前', kind: 'long' });
+    const autosaver = createChapterAutosaver({ repository, chapter: created.chapter, debounceMs: 60_000 });
+
+    await autosaver.queue('<p>切换前必须保留。</p>', '切换前必须保留。');
+    await autosaver.dispose();
+
+    expect((await repository.getChapter(created.chapter.id))?.plainText).toBe('切换前必须保留。');
+  });
 });

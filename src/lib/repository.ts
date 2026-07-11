@@ -140,8 +140,8 @@ function normalizeTitle(value: string, fallback: string): string {
 }
 
 function needsAutomaticSnapshot(chapter: StoredChapter, savedAt: string): boolean {
-  if (!chapter.lastSnapshotAt) return false;
-  return new Date(savedAt).getTime() - new Date(chapter.lastSnapshotAt).getTime() >= 5 * 60_000;
+  const baseline = chapter.lastSnapshotAt ?? chapter.updatedAt;
+  return new Date(savedAt).getTime() - new Date(baseline).getTime() >= 5 * 60_000;
 }
 
 export function createWritingRepository(options: WritingRepositoryOptions): WritingRepository {

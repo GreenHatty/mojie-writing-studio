@@ -89,4 +89,16 @@ describe('WritingRepository', () => {
 
     expect(await repository.getTodayWritingCount('2026-07-10')).toBe(5);
   });
+
+  it('creates an automatic snapshot on the first eligible save', async () => {
+    const repository = makeRepository();
+    const created = await repository.createWork({ title: '第一份快照', kind: 'long' });
+    await repository.saveChapter(created.chapter.id, {
+      baseRevision: 0,
+      content: '<p>正文。</p>',
+      plainText: '正文。',
+      savedAt: '2026-07-10T01:05:00.000Z'
+    });
+    expect(await repository.listSnapshots(created.chapter.id)).toHaveLength(1);
+  });
 });

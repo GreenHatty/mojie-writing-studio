@@ -21,7 +21,7 @@ export type ChapterAutosaver = {
   queue(content: string, plainText: string): Promise<void>;
   flush(): Promise<void>;
   currentChapter(): StoredChapter;
-  dispose(): void;
+  dispose(): Promise<void>;
 };
 
 export function createChapterAutosaver(options: ChapterAutosaverOptions): ChapterAutosaver {
@@ -87,10 +87,11 @@ export function createChapterAutosaver(options: ChapterAutosaverOptions): Chapte
     currentChapter() {
       return chapter;
     },
-    dispose() {
-      disposed = true;
+    async dispose() {
       if (timer) clearTimeout(timer);
       timer = null;
+      await flush();
+      disposed = true;
     }
   };
 }
