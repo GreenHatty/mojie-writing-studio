@@ -17,4 +17,12 @@ describe('D1WorkStore', () => {
     expect(statements).toHaveLength(3);
     expect(statements[0].values).toContain('书');
   });
+
+  it('lists visible work metadata without正文', async () => {
+    const database = { prepare() { return { bind() { return { all: async () => ({ results: [{ id: 'w', title: '书', kind: 'long', status: 'DRAFT', updated_at: '2026-07-11T00:00:00Z', role: 'VIEWER', total_word_count: 12 }] }) }; } }; } } as unknown as D1Database;
+    const store = createD1WorkStore(database);
+    const works = await store.listVisible('viewer-1');
+    expect(works).toEqual([{ id: 'w', title: '书', kind: 'long', status: 'DRAFT', updatedAt: '2026-07-11T00:00:00Z', role: 'VIEWER', totalWordCount: 12 }]);
+    expect(JSON.stringify(works)).not.toContain('canonical');
+  });
 });

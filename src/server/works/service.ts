@@ -8,6 +8,13 @@ export type ServerChapter = { id: string; workId: string; volumeId: string; titl
 export type WorkSummary = Pick<ServerWork, 'id' | 'title' | 'kind' | 'status' | 'updatedAt'> & { role: 'WORK_OWNER' | WorkRole; totalWordCount: number };
 export type WorkGraph = { work: ServerWork; volume: ServerVolume; chapter: ServerChapter };
 
+export function buildWorkGraph(ownerId: string, input: { title: string; kind: WorkKind }, updatedAt: string): WorkGraph {
+  const work: ServerWork = { id: crypto.randomUUID(), ownerId, title: input.title.trim() || '未命名作品', kind: input.kind, status: 'DRAFT', updatedAt, deletedAt: null, deleteReason: null };
+  const volume: ServerVolume = { id: crypto.randomUUID(), workId: work.id, title: '第一卷', position: 0 };
+  const chapter: ServerChapter = { id: crypto.randomUUID(), workId: work.id, volumeId: volume.id, title: '第1章', canonicalContent: { type: 'doc', content: [{ type: 'paragraph' }] }, plainText: '', wordCount: 0, revision: 0, position: 0 };
+  return { work, volume, chapter };
+}
+
 class MemoryWorkStore {
   readonly works = new Map<string, ServerWork>();
   readonly volumes = new Map<string, ServerVolume>();
@@ -26,9 +33,7 @@ export function createWorkService(store: MemoryWorkStore, now = () => new Date()
   }
   return {
     async createWork(ownerId: string, input: { title: string; kind: WorkKind }) {
-      const work: ServerWork = { id: crypto.randomUUID(), ownerId, title: input.title.trim() || '未命名作品', kind: input.kind, status: 'DRAFT', updatedAt: now(), deletedAt: null, deleteReason: null };
-      const volume: ServerVolume = { id: crypto.randomUUID(), workId: work.id, title: '第一卷', position: 0 };
-      const chapter: ServerChapter = { id: crypto.randomUUID(), workId: work.id, volumeId: volume.id, title: '第1章', canonicalContent: { type: 'doc', content: [{ type: 'paragraph' }] }, plainText: '', wordCount: 0, revision: 0, position: 0 };
+      const { work, volume, chapter } = buildWorkGraph(ownerId, input, now());
       store.works.set(work.id, work); store.volumes.set(volume.id, volume); store.chapters.set(chapter.id, chapter);
       return { work, volume, chapter };
     },
