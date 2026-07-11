@@ -27,6 +27,11 @@ jobs:
           cache: npm
       - name: Install dependencies
         run: npm ci --legacy-peer-deps --loglevel=error --no-audit --no-fund
+      - name: Verify Worker API syntax
+        run: |
+          node --check scripts/mojie-api.mjs
+          node --check scripts/cloudflare-fetch-entry.mjs
+          node --check scripts/prepare-dist.mjs
       - name: Unit tests
         shell: bash
         run: |
