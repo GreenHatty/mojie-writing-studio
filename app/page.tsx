@@ -1,5 +1,5 @@
-import { WritingStudio } from '../src/components/writing-studio';
+import { PrivateApp } from '../src/features/app/private-app';
 
 export default function Home() {
-  return <WritingStudio />;
+  return <PrivateApp />;
 }
