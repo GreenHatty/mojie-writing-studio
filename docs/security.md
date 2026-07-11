@@ -7,3 +7,7 @@
 所有认证与受保护响应使用 `Cache-Control: no-store, private`。变更请求必须通过同源 Origin 与双重提交 CSRF 校验。日志不记录正文、密码、cookie、令牌或原始数据库错误。
 
 每位用户的本地草稿用 32 字节 DEK 加密。DEK 只以 `LOCAL_DRAFT_KEK` 封装后保存，浏览器登录后仅在内存中使用；缺少 KEK 或无法解封时拒绝读写草稿。
+
+## 依赖审计
+
+2026-07-11 执行 `npm audit --omit=dev` 报告 Next 依赖链中的 2 个中危 PostCSS 项。npm 提供的 `--force` 方案会将 Next 降级到 9.3.3，属于不可接受的破坏性变更，因此未自动应用。生产上线前必须在兼容的 Next/Vinext 修复版本发布后升级并重新运行类型、测试、构建与审计。
