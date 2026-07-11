@@ -1,9 +1,8 @@
 'use client';
 
-import { localOnlyReasons } from '../lib/capabilities';
 import type { WorkKind, WorkRecord } from '../lib/repository';
 import { CreateWorkForm } from './create-work-form';
-import { RankingPanel } from './ranking-panel';
+import { RankingAutomationPanel } from './ranking-automation-panel';
 
 type WorkspaceDashboardProps = {
   works: WorkRecord[];
@@ -28,28 +27,19 @@ function formatDate(value: string): string {
 }
 
 export function WorkspaceDashboard({ works, creating = false, todayCount, onCreate, onOpen }: WorkspaceDashboardProps) {
-  const capabilityNotes = localOnlyReasons();
-
   return (
     <main className="workspace-dashboard">
       <header className="dashboard-header">
         <div>
-          <p className="eyebrow">私人写作空间</p>
+          <p className="eyebrow">受邀私人写作空间</p>
           <h1>我的作品</h1>
-          <p>作品、草稿和版本保存在本机。需要云端协作时，必须先配置服务端身份验证与存储。</p>
+          <p>本机草稿用于即时写作，云端同步、作品成员权限和自动备份由服务端单独校验。</p>
         </div>
         <div className="dashboard-stat" aria-label={`今日新增${todayCount}字`}>
           <strong>{new Intl.NumberFormat('zh-CN').format(todayCount)}</strong>
           <span>今日新增字数</span>
         </div>
       </header>
-
-      {capabilityNotes.length ? (
-        <details className="capability-notice">
-          <summary>当前运行模式：本地优先</summary>
-          <ul>{capabilityNotes.map((note) => <li key={note}>{note}</li>)}</ul>
-        </details>
-      ) : null}
 
       <section aria-label="作品列表" className="work-grid">
         {works.map((work) => (
@@ -66,7 +56,7 @@ export function WorkspaceDashboard({ works, creating = false, todayCount, onCrea
         ))}
       </section>
 
-      <RankingPanel />
+      <RankingAutomationPanel />
 
       <section className="dashboard-create">
         <div>
