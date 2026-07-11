@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useState } from 'react';
 import { apiRequest, jsonBody, type AuthenticatedUser } from '../lib/api-client';
+import { createWritingRepository } from '../lib/repository';
 import { WritingStudio } from './writing-studio';
 
 type SessionResponse = {
@@ -33,7 +34,9 @@ export function AuthenticatedApp() {
   const [createdInvite, setCreatedInvite] = useState<{ token: string; expiresAt: string; email: string } | null>(null);
 
   const canInvite = session?.user?.globalRole === 'owner' || session?.user?.globalRole === 'admin';
-  const localDatabaseName = useMemo(() => session?.user ? `mojie-writing-studio:${session.user.id}` : 'mojie-writing-studio:anonymous', [session?.user]);
+  const repository = useMemo(() => session?.user
+    ? createWritingRepository({ databaseName: `mojie-writing-studio:${session.user.id}`, ownerId: session.user.id })
+    : null, [session?.user]);
 
   async function refreshSession() {
     try {
@@ -160,7 +163,7 @@ export function AuthenticatedApp() {
           <p role="status">{status}</p>
         </aside>
       ) : null}
-      <WritingStudio databaseName={localDatabaseName} ownerId={session.user.id} />
+      {repository ? <WritingStudio repository={repository} /> : null}
     </div>
   );
 }
