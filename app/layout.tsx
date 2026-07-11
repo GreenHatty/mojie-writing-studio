@@ -5,6 +5,7 @@ import './tools.css';
 import './cloud-docx.css';
 import './visual-tools.css';
 import './ranking.css';
+import './ranking-automation.css';
 import './search-replace.css';
 
 export const metadata: Metadata = {
