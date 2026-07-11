@@ -55,7 +55,7 @@ migrations/               可重复执行的关系型数据库迁移
 - `COMMENTER`：可读并创建批注/建议；不能修改正文。
 - `VIEWER`：只读。
 
-统一权限 API 为 `requireSession()`、`requireOwner()`、`getNovelAccess(userId, novelId)`、`requireNovelRole(userId, novelId, allowedRoles)`、`canReadNovel()`、`canEditNovel()`、`canCommentNovel()`、`canManageMembers()` 与 `canDeleteNovel()`。作品列表只返回当前用户可读作品的元数据；Owner 的普通列表不自动包含其他用户的私人作品。
+统一权限 API 为 `requireSession()`、`requireOwner()`、`getWorkAccess(userId, workId)`、`requireWorkRole(userId, workId, allowedRoles)`、`canReadWork(userId, workId)`、`canEditWork(userId, workId)`、`canCommentWork(userId, workId)`、`canManageWorkMembers(userId, workId)` 与 `canDeleteWork(userId, workId)`。所有领域参数一律使用 `workId`，不得混用 `novelId`。作品列表只返回当前用户可读作品的元数据；Owner 的普通列表不自动包含其他用户的私人作品。
 
 ## 数据模型、内容标准与唯一约束
 
@@ -64,6 +64,7 @@ migrations/               可重复执行的关系型数据库迁移
 | 表 | 核心字段与约束 |
 | --- | --- |
 | `users` | `id`、`platform_role`、账号标识、密码哈希元数据；只有 `OWNER` 或 `WRITER`。 |
+| `user_local_draft_keys` | `user_id` 唯一、`wrapped_dek`、`wrap_iv`、`kek_version` 与时间；仅保存由 `LOCAL_DRAFT_KEK` 封装的 DEK。 |
 | `sessions` | `token_hash` 唯一、`user_id`、CSRF 状态、`expires_at`、`absolute_expires_at`、`revoked_at`；绝不保存会话令牌明文。 |
 | `invitations` | `token_hash` 唯一、角色、作品范围、有效期、一次性/可重复、撤销信息；绝不保存邀请令牌明文。 |
 | `works` | 计划列出的书籍字段、`owner_id`、`version`、`deleted_at`、`deleted_by`、`delete_reason`。 |
@@ -72,7 +73,9 @@ migrations/               可重复执行的关系型数据库迁移
 | `chapters` | `canonical_content`、`plain_text`、字数、状态、位置、目标、锁定/隐藏、`revision`、回收站字段。 |
 | `chapter_versions` | 不可变快照、`reason` 枚举、标签、创建者、字数、收藏标记；冲突副本以 `reason=CONFLICT_COPY` 明确识别。 |
 | `chapter_conflicts` | 当前版本、提交版本、冲突版本、解析状态和解决者；不能仅通过章节标题识别冲突。 |
-| `chapter_notes` | 章节备注/批注元数据。 |
+| `chapter_notes` | 私人章节备注：`author_id`、章节、正文和时间；只允许备注作者读写，平台 Owner 或其他作品成员没有隐含读取权。 |
+| `chapter_comments` | 协作批注：章节、可选文本锚点、`author_id`、线程状态和时间；授权读者可读，`COMMENTER`/`EDITOR`/作品拥有者可创建，作者可编辑/删除自己的内容，作品拥有者或 `EDITOR` 可管理线程。 |
+| `change_suggestions` | 修改建议：原文锚点、建议替换内容、`author_id`、状态和处理者；`COMMENTER` 及以上可创建，只有作品拥有者或 `EDITOR` 可接受、拒绝或应用。应用建议必须走正文 revision 保存，绝不自动覆盖正文。 |
 | `writing_sessions` | 用户、日期、增加字数、更新时间，供今日字数与连续写作统计。 |
 | `writing_goals` | 用户或作品的周目标、周期与完成进度，供工作台周目标。 |
 | `sync_operations` | `client_operation_id` 唯一、用户、章节、请求摘要、结果和时间；网络重试返回原结果，不重复保存。 |
@@ -87,9 +90,9 @@ migrations/               可重复执行的关系型数据库迁移
 
 密码哈希固定为 Web Crypto `PBKDF2-HMAC-SHA-256`：每个密码使用 16 字节随机盐、600,000 次迭代、32 字节派生输出，持久化算法/迭代次数/盐/摘要。成功登录后若存储参数低于当前值，立即以当前参数重新哈希。首个 Owner 仅能凭环境变量 `OWNER_INITIALIZATION_KEY` 初始化；成功后将不可逆的 `owner_initialized_at` 写入数据库，初始化入口永久关闭。
 
-会话令牌为 32 字节随机值，浏览器只接收 `__Host-mojie-session`（`HttpOnly`、生产环境 `Secure`、`SameSite=Lax`、`Path=/`）cookie，数据库只保存 SHA-256 摘要。会话闲置有效期为 12 小时、绝对有效期为 7 天；剩余小于 2 小时时，正常已认证请求可续期至 12 小时，但绝不超过绝对有效期。注销、过期和撤销都立即拒绝后续请求。所有认证、会话、初始化和受保护响应为 `Cache-Control: no-store, private`。
+会话令牌为 32 字节随机值，数据库只保存 SHA-256 摘要。生产 HTTPS 环境只使用 `__Host-mojie-session`（`HttpOnly`、`Secure`、`SameSite=Lax`、`Path=/`、无 `Domain`）和 `__Host-mojie-csrf` cookie；生产环境若无法设置 `Secure` 或 `__Host-` 约束必须失败关闭，绝不降级。仅 `NODE_ENV=development` 的本地 HTTP 可使用明确隔离的 `mojie-dev-session` 与 `mojie-dev-csrf` 名称，且不得在生产构建中启用。会话闲置有效期为 12 小时、绝对有效期为 7 天；剩余小于 2 小时时，正常已认证请求可续期至 12 小时，但绝不超过绝对有效期。注销、过期和撤销都立即拒绝后续请求。所有认证、会话、初始化和受保护响应为 `Cache-Control: no-store, private`。
 
-变更请求使用固定的双重提交 CSRF 方案：登录后设置非 HttpOnly 的 `__Host-mojie-csrf` 随机 cookie；每个变更请求必须携带相同值的 `X-CSRF-Token`，并且 `Origin` 必须精确匹配受配置保护的站点 Origin。服务端以常量时间比较 cookie/header，拒绝缺失或不匹配请求。登录、Owner 初始化和邀请接受使用同源 Origin 校验、速率限制与通用失败消息。
+变更请求使用固定的双重提交 CSRF 方案：登录后按环境设置非 HttpOnly 的 CSRF 随机 cookie；每个变更请求必须携带相同值的 `X-CSRF-Token`，并且 `Origin` 必须精确匹配受配置保护的站点 Origin。服务端以常量时间比较 cookie/header，拒绝缺失或不匹配请求。登录、Owner 初始化和邀请接受使用同源 Origin 校验、速率限制与通用失败消息。
 
 认证速率限制使用数据库或 Worker 绑定的原子计数器：登录以规范化账号+IP 限制为每 15 分钟 5 次失败，Owner 初始化和邀请接受以 IP 限制为每 15 分钟 3 次失败；超过限制只返回通用稍后重试错误。所有 API 错误使用稳定错误码，不返回账户存在性、数据库细节或令牌信息。正文 JSON/HTML 使用严格允许列表清理，拒绝脚本、事件属性、危险 URL 和未允许节点。Worker 响应使用兼容编辑器的 CSP 与基础安全头。
 
@@ -97,14 +100,16 @@ migrations/               可重复执行的关系型数据库迁移
 
 ## 浏览器本地隔离、保存与冲突
 
-IndexedDB 按认证的 `userId` 命名空间隔离，包含草稿、同步队列、设置和冲突草稿。草稿正文以用户专属本地存储密钥 AES-GCM 加密；密钥仅在成功登录后获取并保留在内存，不持久化到浏览器。注销时关闭当前用户数据库、清空内存状态和密钥，但不自动删除密文草稿；只有同一用户重新成功登录后才可解锁。用户 B 的应用流程不能打开用户 A 的草稿、设置或队列。
+IndexedDB 按认证的 `userId` 命名空间隔离，包含草稿、同步队列、设置和冲突草稿。每个用户生成一个 32 字节 DEK，以 AES-GCM 加密本地草稿；DEK 使用 Worker Secret `LOCAL_DRAFT_KEK` 进行 AES-GCM 封装。数据库中的 `user_local_draft_keys` 只保存 `user_id`、`wrapped_dek`、`wrap_iv` 和 `kek_version`，绝不保存明文 DEK。登录后，受保护的同源接口仅向已认证的同一用户解封 DEK；浏览器通过 TLS 获取后只将其保留在内存，不持久化到 IndexedDB、localStorage、cookie 或 Service Worker。缺少 `LOCAL_DRAFT_KEK`、封装记录或版本不受支持时必须失败关闭，拒绝读取或写入草稿，不能回退为明文存储。
+
+注销时关闭当前用户数据库、清空内存状态和 DEK，但不自动删除密文草稿；只有同一用户重新成功登录后才可解锁。用户 B 的应用流程不能打开用户 A 的草稿、设置或队列。
 
 离线写作只保证当前已登录会话中已经打开且获授权的作品；离线状态绝不能跳过登录打开其他用户本地数据。旧未加密 IndexedDB 只通过显式迁移流程访问，并先生成本地 JSON 备份。
 
 保存分为三层：
 
 1. 输入后短暂防抖，先写入用户隔离的加密 IndexedDB 草稿和队列。
-2. 约一秒空闲后调用受保护 API，发送 `baseRevision`、canonical JSON、派生纯文本和唯一 `client_operation_id`。切换章节必须等待本地写入和服务端 `flush()` 成功后才切换；组件正常卸载由调用方等待 `flush()`。
+2. 约一秒空闲后调用受保护 API，发送 `baseRevision`、canonical JSON、派生纯文本和唯一 `client_operation_id`。切换章节必须先等待 IndexedDB 草稿和队列持久化完成；随后尝试云端 `flush()`。云端保存失败、离线或超时时，操作必须保留在幂等同步队列并允许切换章节，绝不阻塞用户或丢失本地草稿。组件正常卸载由调用方等待本地持久化；云端同步仍按队列重试。
 3. 服务端以事务检查访问、锁定与 revision，并记录不可变版本：手动命名、首次达到快照阈值、每五分钟、恢复前、冲突前；为未来导入/批量替换/导出保留版本原因。手动或收藏版本不会被自动清理。
 
 `pagehide` 或浏览器关闭前不能承诺等待异步云端写入：必须保证 IndexedDB 草稿已写入，云端请求只进行 `keepalive` 最佳努力尝试。页面重新打开后队列自动重试。若 revision 过期，服务端不覆盖当前内容，而是创建 `chapter_versions.reason=CONFLICT_COPY` 和 `chapter_conflicts` 记录，并返回可比较的本地/云端内容；用户可保留本地、保留云端或另存副本，解析前先快照。
@@ -125,11 +130,12 @@ IndexedDB 按认证的 `userId` 命名空间隔离，包含草稿、同步队列
 
 新增测试必须使用内存适配器或 fake IndexedDB，绝不访问真实生产资源，并至少覆盖：
 
-- 平台身份与作品访问矩阵：A 不能读 B 的作品；Viewer/Commenter 不能编辑；Editor 不能删除；Writer 可管理自己作品；Owner 可管理邀请但普通列表不暴露他人作品；撤销成员后立即失效。
-- 首位 Owner 初始化、通用登录失败、退出、过期/撤销会话立即失效、会话续期和速率限制。
+- 平台身份与作品访问矩阵：A 不能读 B 的作品；Viewer/Commenter 不能编辑；Editor 不能删除；Writer 可管理自己作品；Owner 可管理邀请但普通列表不暴露他人作品；撤销成员后立即失效；所有权限 API 仅接受 `workId`。
+- 私人备注、协作批注与修改建议的权限：私人备注仅作者可读写；授权协作成员才能读/写批注；Viewer 不能创建批注或建议；只有 Editor/作品拥有者能处理建议，且应用建议不会绕过正文 revision 保存。
+- 首位 Owner 初始化、通用登录失败、退出、过期/撤销会话立即失效、会话续期和速率限制；生产 HTTPS 只设置 `__Host-` cookie，开发 HTTP 只设置 `-dev` cookie，生产禁止降级。
 - 会话令牌与邀请令牌仅持久化摘要；认证/受保护响应有 `no-store`；审计和错误日志不含正文、密码、cookie 或令牌。
-- `sync_operations.client_operation_id` 重试不会二次保存；revision 冲突保留双方内容和独立冲突记录；首次自动快照与恢复前快照；`dispose`、切换章节和 `pagehide` 的本地草稿保障。
-- 同设备不同用户的 IndexedDB 隔离、注销锁定与同用户重新登录解锁；离线状态不能读取其他用户本地数据。
+- `sync_operations.client_operation_id` 重试不会二次保存；revision 冲突保留双方内容和独立冲突记录；首次自动快照与恢复前快照；`dispose`、切换章节和 `pagehide` 的本地草稿保障；云端 flush 失败后本地队列持久化并允许章节切换。
+- 同设备不同用户的 IndexedDB 隔离、注销锁定与同用户重新登录解锁；离线状态不能读取其他用户本地数据；每用户 DEK 为 32 字节、数据库中仅有封装密文/IV/版本、DEK 不写入浏览器持久存储；缺少 `LOCAL_DRAFT_KEK` 或无法解封时失败关闭。
 - `migration_runs.migration_id` 重试不重复导入；旧 HTML 转换失败保留原备份。
 - canonical JSON 的派生纯文本、HTML 清理、工作台真实统计、目录/回收站和三栏桌面/平板/手机交互。
 
