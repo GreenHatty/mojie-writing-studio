@@ -13,4 +13,14 @@ describe('user draft store', () => {
     await expect(b.getDraft('chapter-1')).resolves.toBeNull();
     await a.destroy(); await b.destroy();
   });
+
+  it('keeps an encrypted idempotent sync operation until acknowledged', async () => {
+    const store = await openUserDraftStore('writer-queue', crypto.getRandomValues(new Uint8Array(32)));
+    await store.enqueueSync('op-1', 'chapter-1', { baseRevision: 2, plainText: '待同步' });
+    await store.enqueueSync('op-1', 'chapter-1', { baseRevision: 2, plainText: '待同步' });
+    await expect(store.listSync()).resolves.toEqual([{ clientOperationId: 'op-1', chapterId: 'chapter-1', value: { baseRevision: 2, plainText: '待同步' } }]);
+    await store.removeSync('op-1');
+    await expect(store.listSync()).resolves.toEqual([]);
+    await store.destroy();
+  });
 });

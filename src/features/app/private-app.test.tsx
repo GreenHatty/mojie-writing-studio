@@ -15,6 +15,7 @@ describe('PrivateApp', () => {
   it('loads visible works and opens their first server chapter', async () => {
     const fetchMock = vi.fn()
       .mockResolvedValueOnce(new Response(JSON.stringify({ userId: 'writer-1' }), { status: 200 }))
+      .mockResolvedValueOnce(new Response(JSON.stringify({ dek: btoa(String.fromCharCode(...new Uint8Array(32))) }), { status: 200 }))
       .mockResolvedValueOnce(new Response(JSON.stringify({ works: [{ id: 'w1', title: '真实作品', kind: 'long', status: 'DRAFT', updatedAt: '2026-07-11T00:00:00Z', role: 'WORK_OWNER', totalWordCount: 12, firstChapterId: 'c1' }] }), { status: 200 }));
     vi.stubGlobal('fetch', fetchMock);
     render(<PrivateApp />);

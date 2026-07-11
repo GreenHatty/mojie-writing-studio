@@ -18,6 +18,8 @@ export function PrivateApp() {
   const [state, setState] = useState<'loading' | 'anonymous' | 'ready' | 'error'>('loading');
   const [works, setWorks] = useState<WorkSummary[]>([]);
   const [activeChapterId, setActiveChapterId] = useState<string | null>(null);
+  const [draftDek, setDraftDek] = useState<Uint8Array | null>(null);
+  const [userId, setUserId] = useState<string | null>(null);
   const [csrf, setCsrf] = useState('');
   const [account, setAccount] = useState('');
   const [password, setPassword] = useState('');
@@ -30,6 +32,15 @@ export function PrivateApp() {
     setState('ready');
   }
 
+  async function unlockLocalDrafts() {
+    const response = await fetch('/api/auth/draft-key', { credentials: 'same-origin', cache: 'no-store' });
+    if (!response.ok) throw new Error('LOCAL_DRAFT_KEY_UNAVAILABLE');
+    const { dek } = await response.json() as { dek: string };
+    const value = Uint8Array.from(atob(dek), (character) => character.charCodeAt(0));
+    if (value.byteLength !== 32) throw new Error('LOCAL_DRAFT_KEY_UNAVAILABLE');
+    setDraftDek(value);
+  }
+
   useEffect(() => {
     let active = true;
     void (async () => {
@@ -38,7 +49,9 @@ export function PrivateApp() {
         if (!active) return;
         if (response.status === 401) { setState('anonymous'); return; }
         if (!response.ok) { setState('error'); return; }
-        setCsrf(csrfFromBrowser());
+        const session = await response.json() as { userId: string };
+        setUserId(session.userId); setCsrf(csrfFromBrowser());
+        await unlockLocalDrafts();
         await loadWorks();
       } catch { if (active) setState('error'); }
     })();
@@ -49,8 +62,9 @@ export function PrivateApp() {
     event.preventDefault(); setMessage('');
     const response = await fetch('/api/auth/login', { method: 'POST', credentials: 'same-origin', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ account, password }) });
     if (!response.ok) { setMessage('账号或密码错误'); return; }
-    const payload = await response.json() as { csrf: string };
-    setCsrf(payload.csrf);
+    const payload = await response.json() as { csrf: string; user: { id: string } };
+    setUserId(payload.user.id); setCsrf(payload.csrf);
+    await unlockLocalDrafts();
     await loadWorks();
   }
 
@@ -74,7 +88,7 @@ export function PrivateApp() {
       {message ? <p role="alert">{message}</p> : null}<button type="submit">登录</button>
     </form>
   </main>;
-  if (activeChapterId) return <ServerEditor chapterId={activeChapterId} csrf={csrf} onBack={() => setActiveChapterId(null)} />;
+  if (activeChapterId && draftDek && userId) return <ServerEditor chapterId={activeChapterId} csrf={csrf} userId={userId} draftDek={draftDek} onBack={() => setActiveChapterId(null)} />;
   return <main className="private-dashboard">
     <header><div><p className="eyebrow">PRIVATE WRITING STUDIO</p><h1>我的作品</h1></div><div className="dashboard-actions"><button onClick={() => void createWork('long')}>新建长篇</button><button onClick={() => void createWork('short')}>新建短篇</button><button onClick={() => void createWork('essay')}>新建随笔</button></div></header>
     {message ? <p role="alert">{message}</p> : null}

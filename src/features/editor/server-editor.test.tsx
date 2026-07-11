@@ -6,6 +6,7 @@ vi.mock('../../components/rich-text-editor', () => ({
   RichTextEditor: ({ onDocumentChange }: { onDocumentChange: (json: unknown, text: string, html: string) => void }) =>
     <button onClick={() => onDocumentChange({ type: 'doc', content: [{ type: 'paragraph', content: [{ type: 'text', text: '新内容' }] }] }, '新内容', '<p>新内容</p>')}>模拟输入</button>
 }));
+vi.mock('../../lib/offline/draft-store', () => ({ openUserDraftStore: async () => ({ saveDraft: vi.fn(async () => undefined), getDraft: vi.fn(async () => null), enqueueSync: vi.fn(async () => undefined), listSync: vi.fn(async () => []), removeSync: vi.fn(async () => undefined), close: vi.fn() }) }));
 
 afterEach(() => { vi.useRealTimers(); vi.unstubAllGlobals(); });
 
@@ -15,7 +16,7 @@ describe('ServerEditor', () => {
       .mockResolvedValueOnce(new Response(JSON.stringify({ chapter: { id: 'c', workId: 'w', title: '第一章', canonicalContent: { type: 'doc', content: [{ type: 'paragraph' }] }, plainText: '', revision: 3 } }), { status: 200 }))
       .mockResolvedValueOnce(new Response(JSON.stringify({ kind: 'saved', revision: 4 }), { status: 200 }));
     vi.stubGlobal('fetch', fetchMock);
-    render(<ServerEditor chapterId="c" csrf="csrf" onBack={() => undefined} />);
+    render(<ServerEditor chapterId="c" csrf="csrf" userId="u" draftDek={new Uint8Array(32)} onBack={() => undefined} />);
     expect(await screen.findByRole('heading', { name: '第一章' })).toBeTruthy();
     fireEvent.click(screen.getByRole('button', { name: '模拟输入' }));
     fireEvent.click(screen.getByRole('button', { name: '立即保存' }));
