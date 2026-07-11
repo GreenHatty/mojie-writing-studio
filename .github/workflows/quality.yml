@@ -13,7 +13,7 @@ permissions:
 jobs:
   verify:
     runs-on: ubuntu-latest
-    timeout-minutes: 15
+    timeout-minutes: 20
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -23,22 +23,57 @@ jobs:
           node-version: 22
           cache: npm
       - name: Install dependencies
+        id: install
         shell: bash
         run: |
           set -o pipefail
           npm ci --legacy-peer-deps --loglevel=error --no-audit --no-fund 2>&1 | tee npm-install.log
-      - name: Upload install diagnostics
-        if: failure()
+      - name: Unit tests
+        id: tests
+        continue-on-error: true
+        shell: bash
+        run: |
+          set -o pipefail
+          npm test 2>&1 | tee unit-tests.log
+      - name: Typecheck
+        id: typecheck
+        continue-on-error: true
+        shell: bash
+        run: |
+          set -o pipefail
+          npm run typecheck 2>&1 | tee typecheck.log
+      - name: Verify Sites worker entry
+        id: worker
+        continue-on-error: true
+        shell: bash
+        run: |
+          set -o pipefail
+          npm run test:worker-entry 2>&1 | tee worker-entry.log
+      - name: Production build
+        id: build
+        continue-on-error: true
+        shell: bash
+        run: |
+          set -o pipefail
+          npm run build 2>&1 | tee production-build.log
+      - name: Upload quality diagnostics
+        if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: npm-install-diagnostics
-          path: npm-install.log
+          name: quality-diagnostics
+          path: |
+            npm-install.log
+            unit-tests.log
+            typecheck.log
+            worker-entry.log
+            production-build.log
           if-no-files-found: ignore
-      - name: Unit tests
-        run: npm test
-      - name: Typecheck
-        run: npm run typecheck
-      - name: Verify Sites worker entry
-        run: npm run test:worker-entry
-      - name: Production build
-        run: npm run build
+      - name: Enforce quality gate
+        if: always()
+        shell: bash
+        run: |
+          test "${{ steps.install.outcome }}" = "success"
+          test "${{ steps.tests.outcome }}" = "success"
+          test "${{ steps.typecheck.outcome }}" = "success"
+          test "${{ steps.worker.outcome }}" = "success"
+          test "${{ steps.build.outcome }}" = "success"
