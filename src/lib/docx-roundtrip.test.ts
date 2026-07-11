@@ -30,6 +30,23 @@ function sampleDocx(): Uint8Array {
   ]);
 }
 
+function mixedRunDocx(): Uint8Array {
+  return createStoredZip([
+    {
+      name: '[Content_Types].xml',
+      data: encoder.encode('<Types/>')
+    },
+    {
+      name: 'word/document.xml',
+      data: encoder.encode(
+        '<w:document xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main"><w:body>' +
+        '<w:p><w:r><w:rPr><w:b/></w:rPr><w:t>粗体</w:t></w:r><w:r><w:rPr><w:i/></w:rPr><w:t>斜体</w:t></w:r></w:p>' +
+        '</w:body></w:document>'
+      )
+    }
+  ]);
+}
+
 describe('DOCX round trip', () => {
   it('returns the exact original bytes when content is not edited', async () => {
     const original = sampleDocx();
@@ -51,6 +68,15 @@ describe('DOCX round trip', () => {
     expect(decoder.decode(reparsed.entries.get('word/document.xml'))).toContain('<w:b/>');
     expect(decoder.decode(reparsed.entries.get('word/header1.xml'))).toContain('固定页眉');
     expect(reparsed.entries.get('word/media/image1.png')).toEqual(new Uint8Array([1, 2, 3, 4, 5]));
+  });
+
+  it('keeps existing mixed run formatting nodes while redistributing edited text', async () => {
+    const session = await importDocxRoundTrip(mixedRunDocx());
+    const exported = await exportDocxRoundTrip(session, ['新粗新斜']);
+    const xml = decoder.decode((await importDocxRoundTrip(exported)).entries.get('word/document.xml'));
+
+    expect(xml).toContain('<w:rPr><w:b/></w:rPr><w:t>新粗</w:t>');
+    expect(xml).toContain('<w:rPr><w:i/></w:rPr><w:t>新斜</w:t>');
   });
 
   it('requires the same paragraph count in format-preserving mode', async () => {
