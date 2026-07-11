@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import type { ProjectEntity, ProjectEntityKind } from '../lib/project-model';
 import type { WritingRepository } from '../lib/repository';
+import { VisualSettingsPanel } from './visual-settings-panel';
 
 type ProjectPanelProps = {
   repository: WritingRepository;
@@ -35,6 +36,7 @@ export function ProjectPanel({ repository, workId }: ProjectPanelProps) {
   const [includeDeleted, setIncludeDeleted] = useState(false);
   const [busy, setBusy] = useState(false);
   const [status, setStatus] = useState('');
+  const [showVisualTools, setShowVisualTools] = useState(false);
 
   const selected = useMemo(() => entities.find((entity) => entity.id === selectedId) ?? null, [entities, selectedId]);
 
@@ -190,6 +192,13 @@ export function ProjectPanel({ repository, workId }: ProjectPanelProps) {
           <button disabled={busy} onClick={() => void save()} type="button">{busy ? '正在保存…' : '保存'}</button>
         </div>
       </div>
+
+      <section className="visual-tools-section">
+        <button className="visual-tools-toggle" onClick={() => setShowVisualTools((value) => !value)} type="button">
+          {showVisualTools ? '收起时间线、关系图与地图' : '打开时间线、关系图与地图'}
+        </button>
+        {showVisualTools ? <VisualSettingsPanel repository={repository} workId={workId} /> : null}
+      </section>
     </section>
   );
 }
