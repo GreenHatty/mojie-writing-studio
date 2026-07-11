@@ -1,11 +1,11 @@
 'use client';
 
 import { useState } from 'react';
-import { apiRequest } from '../lib/api-client';
 import {
   exportDocxRoundTrip,
   importDocxRoundTrip,
   sha256Hex,
+  toArrayBuffer,
   type DocxRoundTripSession
 } from '../lib/docx-roundtrip';
 
@@ -14,8 +14,7 @@ type DocxRoundTripPanelProps = {
 };
 
 function downloadBytes(bytes: Uint8Array, fileName: string): void {
-  const buffer = bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength) as ArrayBuffer;
-  const url = URL.createObjectURL(new Blob([buffer], { type: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document' }));
+  const url = URL.createObjectURL(new Blob([toArrayBuffer(bytes)], { type: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document' }));
   const link = document.createElement('a');
   link.href = url;
   link.download = fileName;
@@ -91,7 +90,7 @@ export function DocxRoundTripPanel({ workId }: DocxRoundTripPanelProps) {
           'x-file-name': encodeURIComponent(fileName),
           'x-paragraph-count': String(paragraphs.length)
         },
-        body: session.originalBytes.buffer.slice(session.originalBytes.byteOffset, session.originalBytes.byteOffset + session.originalBytes.byteLength)
+        body: toArrayBuffer(session.originalBytes)
       });
       const payload = await response.json() as { asset?: { id: string }; error?: { message: string } };
       if (!response.ok || !payload.asset) throw new Error(payload.error?.message || '原件上传失败。');
@@ -116,7 +115,7 @@ export function DocxRoundTripPanel({ workId }: DocxRoundTripPanelProps) {
         method: 'PUT',
         credentials: 'same-origin',
         headers: { 'content-type': 'application/vnd.openxmlformats-officedocument.wordprocessingml.document' },
-        body: bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength)
+        body: toArrayBuffer(bytes)
       });
       const payload = await response.json() as { editedHash?: string; error?: { message: string } };
       if (!response.ok) throw new Error(payload.error?.message || '编辑件上传失败。');
