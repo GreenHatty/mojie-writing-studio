@@ -13,10 +13,16 @@ const PLATFORM_LABEL: Record<PublicationPlatform, string> = {
   fanqie: '番茄免费小说'
 };
 
-const AUTHOR_CONSOLE_URL: Record<PublicationPlatform, string | undefined> = {
-  qidian: process.env.NEXT_PUBLIC_QIDIAN_AUTHOR_URL,
-  fanqie: process.env.NEXT_PUBLIC_FANQIE_AUTHOR_URL
+const AUTHOR_CONSOLE_URL: Record<PublicationPlatform, string> = {
+  qidian: process.env.NEXT_PUBLIC_QIDIAN_AUTHOR_URL || 'https://write.qq.com/',
+  fanqie: process.env.NEXT_PUBLIC_FANQIE_AUTHOR_URL || 'https://fanqienovel.com/writer/zone'
 };
+
+const OTHER_AUTHOR_PORTALS = [
+  { label: '纵横中文网作者后台', url: 'https://author.zongheng.com/' },
+  { label: '17K作者后台', url: 'https://author.17k.com/' },
+  { label: '晋江文学城作者后台', url: 'https://author.jjwxc.net/' }
+];
 
 export function PublicationPanel({ chapterTitle, chapterBody }: PublicationPanelProps) {
   const [platform, setPlatform] = useState<PublicationPlatform>('qidian');
@@ -68,7 +74,7 @@ export function PublicationPanel({ chapterTitle, chapterBody }: PublicationPanel
         <strong>{PLATFORM_LABEL[platform]}发布准备</strong>
         <span>{prepared.characterCount} 字</span>
       </div>
-      <p className="publication-disclaimer">字数提醒和文本检查是本地辅助，不代表平台官方审核结论。</p>
+      <p className="publication-disclaimer">字数提醒和文本检查是本地辅助，不代表平台官方审核结论。点击作者后台会在新标签页直达平台发布区域，账号登录和最终提交仍由作者本人完成。</p>
 
       {prepared.blockingIssues.length ? (
         <section className="publication-issues is-blocking">
@@ -97,12 +103,12 @@ export function PublicationPanel({ chapterTitle, chapterBody }: PublicationPanel
       <div className="publication-actions">
         <button disabled={!prepared.title} onClick={() => void copy(prepared.title, '标题')} type="button">复制标题</button>
         <button disabled={!prepared.body} onClick={() => void copy(prepared.body, '正文')} type="button">复制正文</button>
-        {authorUrl ? (
-          <a href={authorUrl} rel="noreferrer" target="_blank">打开作者后台</a>
-        ) : (
-          <span title="需由站点所有者配置对应的公开作者后台地址">作者后台地址未配置</span>
-        )}
+        <a href={authorUrl} rel="noreferrer" target="_blank">直达{PLATFORM_LABEL[platform]}作者后台</a>
       </div>
+      <details className="other-platform-portals">
+        <summary>其他网文平台作者入口</summary>
+        <div>{OTHER_AUTHOR_PORTALS.map((portal) => <a href={portal.url} key={portal.url} rel="noreferrer" target="_blank">{portal.label}</a>)}</div>
+      </details>
       <p className="publication-status" role="status">{status}</p>
     </section>
   );
