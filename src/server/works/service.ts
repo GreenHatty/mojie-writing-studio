@@ -5,7 +5,7 @@ export type WorkKind = 'long' | 'short' | 'essay';
 export type ServerWork = { id: string; ownerId: string; title: string; kind: WorkKind; status: string; updatedAt: string; deletedAt: string | null; deleteReason: string | null };
 export type ServerVolume = { id: string; workId: string; title: string; position: number };
 export type ServerChapter = { id: string; workId: string; volumeId: string; title: string; canonicalContent: CanonicalContent; plainText: string; wordCount: number; revision: number; position: number };
-export type WorkSummary = Pick<ServerWork, 'id' | 'title' | 'kind' | 'status' | 'updatedAt'> & { role: 'WORK_OWNER' | WorkRole; totalWordCount: number };
+export type WorkSummary = Pick<ServerWork, 'id' | 'title' | 'kind' | 'status' | 'updatedAt'> & { role: 'WORK_OWNER' | WorkRole; totalWordCount: number; firstChapterId: string | null };
 export type WorkGraph = { work: ServerWork; volume: ServerVolume; chapter: ServerChapter };
 
 export function buildWorkGraph(ownerId: string, input: { title: string; kind: WorkKind }, updatedAt: string): WorkGraph {
@@ -41,7 +41,8 @@ export function createWorkService(store: MemoryWorkStore, now = () => new Date()
       return [...store.works.values()].filter((work) => !work.deletedAt && (work.ownerId === userId || store.members.has(`${work.id}:${userId}`))).map((work) => ({
         id: work.id, title: work.title, kind: work.kind, status: work.status, updatedAt: work.updatedAt,
         role: work.ownerId === userId ? 'WORK_OWNER' : store.members.get(`${work.id}:${userId}`)!,
-        totalWordCount: [...store.chapters.values()].filter((chapter) => chapter.workId === work.id).reduce((sum, chapter) => sum + chapter.wordCount, 0)
+        totalWordCount: [...store.chapters.values()].filter((chapter) => chapter.workId === work.id).reduce((sum, chapter) => sum + chapter.wordCount, 0),
+        firstChapterId: [...store.chapters.values()].filter((chapter) => chapter.workId === work.id).sort((a, b) => a.position - b.position)[0]?.id ?? null
       }));
     },
     async softDelete(userId: string, workId: string, reason: string): Promise<void> { const work = owned(userId, workId); store.works.set(workId, { ...work, deletedAt: now(), deleteReason: reason }); },

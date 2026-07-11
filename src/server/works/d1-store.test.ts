@@ -8,21 +8,19 @@ describe('D1WorkStore', () => {
       prepare(sql: string) { return { bind(...values: unknown[]) { const statement = { sql, values, run: async () => ({ success: true }) }; statements.push(statement); return statement; } }; },
       async batch(values: unknown[]) { expect(values).toHaveLength(3); return []; }
     } as unknown as D1Database;
-    const store = createD1WorkStore(database);
-    await store.createGraph({
+    await createD1WorkStore(database).createGraph({
       work: { id: 'w', ownerId: 'u', title: '书', kind: 'long', status: 'DRAFT', updatedAt: '2026-07-11T00:00:00Z', deletedAt: null, deleteReason: null },
       volume: { id: 'v', workId: 'w', title: '第一卷', position: 0 },
-      chapter: { id: 'c', workId: 'w', volumeId: 'v', title: '第1章', canonicalContent: { type: 'doc' }, plainText: '', wordCount: 0, revision: 0, position: 0 }
+      chapter: { id: 'c', workId: 'w', volumeId: 'v', title: '第一章', canonicalContent: { type: 'doc' }, plainText: '', wordCount: 0, revision: 0, position: 0 }
     });
     expect(statements).toHaveLength(3);
     expect(statements[0].values).toContain('书');
   });
 
-  it('lists visible work metadata without正文', async () => {
-    const database = { prepare() { return { bind() { return { all: async () => ({ results: [{ id: 'w', title: '书', kind: 'long', status: 'DRAFT', updated_at: '2026-07-11T00:00:00Z', role: 'VIEWER', total_word_count: 12 }] }) }; } }; } } as unknown as D1Database;
-    const store = createD1WorkStore(database);
-    const works = await store.listVisible('viewer-1');
-    expect(works).toEqual([{ id: 'w', title: '书', kind: 'long', status: 'DRAFT', updatedAt: '2026-07-11T00:00:00Z', role: 'VIEWER', totalWordCount: 12 }]);
+  it('lists visible metadata and the first chapter without正文', async () => {
+    const database = { prepare() { return { bind() { return { all: async () => ({ results: [{ id: 'w', title: '书', kind: 'long', status: 'DRAFT', updated_at: '2026-07-11T00:00:00Z', role: 'VIEWER', total_word_count: 12, first_chapter_id: 'c' }] }) }; } }; } } as unknown as D1Database;
+    const works = await createD1WorkStore(database).listVisible('viewer-1');
+    expect(works).toEqual([{ id: 'w', title: '书', kind: 'long', status: 'DRAFT', updatedAt: '2026-07-11T00:00:00Z', role: 'VIEWER', totalWordCount: 12, firstChapterId: 'c' }]);
     expect(JSON.stringify(works)).not.toContain('canonical');
   });
 });

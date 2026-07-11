@@ -1,7 +1,8 @@
-import { render, screen } from '@testing-library/react';
+import { fireEvent, render, screen } from '@testing-library/react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { PrivateApp } from './private-app';
 
+vi.mock('../editor/server-editor', () => ({ ServerEditor: ({ chapterId }: { chapterId: string }) => <h1>编辑章节 {chapterId}</h1> }));
 afterEach(() => vi.unstubAllGlobals());
 
 describe('PrivateApp', () => {
@@ -11,13 +12,13 @@ describe('PrivateApp', () => {
     expect(await screen.findByRole('heading', { name: '登录墨界' })).toBeTruthy();
   });
 
-  it('loads real visible works for an authenticated user', async () => {
+  it('loads visible works and opens their first server chapter', async () => {
     const fetchMock = vi.fn()
       .mockResolvedValueOnce(new Response(JSON.stringify({ userId: 'writer-1' }), { status: 200 }))
-      .mockResolvedValueOnce(new Response(JSON.stringify({ works: [{ id: 'w1', title: '真实作品', kind: 'long', status: 'DRAFT', updatedAt: '2026-07-11T00:00:00Z', role: 'WORK_OWNER', totalWordCount: 12 }] }), { status: 200 }));
+      .mockResolvedValueOnce(new Response(JSON.stringify({ works: [{ id: 'w1', title: '真实作品', kind: 'long', status: 'DRAFT', updatedAt: '2026-07-11T00:00:00Z', role: 'WORK_OWNER', totalWordCount: 12, firstChapterId: 'c1' }] }), { status: 200 }));
     vi.stubGlobal('fetch', fetchMock);
     render(<PrivateApp />);
-    expect(await screen.findByRole('heading', { name: '真实作品' })).toBeTruthy();
-    expect(screen.getByText('12 字')).toBeTruthy();
+    fireEvent.click(await screen.findByRole('button', { name: /真实作品/ }));
+    expect(await screen.findByRole('heading', { name: '编辑章节 c1' })).toBeTruthy();
   });
 });

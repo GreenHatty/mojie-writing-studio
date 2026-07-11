@@ -5,10 +5,13 @@ describe('work handlers', () => {
   it('returns only visible work metadata for the authenticated user', async () => {
     const handlers = createWorkHandlers({
       async requireUserId() { return 'writer-1'; },
-      store: { async listVisible() { return [{ id: 'w', title: '书', kind: 'long', status: 'DRAFT', updatedAt: '2026-07-11T00:00:00Z', role: 'WORK_OWNER', totalWordCount: 0 }]; }, async createGraph() {} }
+      store: {
+        async listVisible() { return [{ id: 'w', title: '书', kind: 'long', status: 'DRAFT', updatedAt: '2026-07-11T00:00:00Z', role: 'WORK_OWNER', totalWordCount: 0, firstChapterId: 'c' }]; },
+        async createGraph() {}
+      }
     });
     const response = await handlers.list(new Request('https://writer.example/api/works'));
-    await expect(response.json()).resolves.toMatchObject({ works: [{ id: 'w', title: '书' }] });
+    await expect(response.json()).resolves.toMatchObject({ works: [{ id: 'w', title: '书', firstChapterId: 'c' }] });
     expect(response.headers.get('Cache-Control')).toBe('no-store, private');
   });
 });

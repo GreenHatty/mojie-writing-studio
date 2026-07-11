@@ -12,9 +12,9 @@ export function createD1WorkStore(database: D1Database) {
       ]);
     },
     async listVisible(userId: string): Promise<WorkSummary[]> {
-      const result = await database.prepare("SELECT w.id, w.title, w.kind, w.status, w.updated_at, CASE WHEN w.owner_id = ? THEN 'WORK_OWNER' ELSE wm.role END AS role, COALESCE(SUM(c.word_count), 0) AS total_word_count FROM works w LEFT JOIN work_members wm ON wm.work_id = w.id AND wm.user_id = ? LEFT JOIN chapters c ON c.work_id = w.id AND c.deleted_at IS NULL WHERE w.deleted_at IS NULL AND (w.owner_id = ? OR wm.user_id IS NOT NULL) GROUP BY w.id, w.title, w.kind, w.status, w.updated_at, w.owner_id, wm.role ORDER BY w.updated_at DESC")
-        .bind(userId, userId, userId).all<{ id: string; title: string; kind: WorkSummary['kind']; status: string; updated_at: string; role: WorkSummary['role']; total_word_count: number }>();
-      return result.results.map((row) => ({ id: row.id, title: row.title, kind: row.kind, status: row.status, updatedAt: row.updated_at, role: row.role, totalWordCount: Number(row.total_word_count) }));
+      const result = await database.prepare("SELECT w.id, w.title, w.kind, w.status, w.updated_at, CASE WHEN w.owner_id = ? THEN 'WORK_OWNER' ELSE wm.role END AS role, COALESCE(SUM(c.word_count), 0) AS total_word_count, (SELECT c2.id FROM chapters c2 WHERE c2.work_id = w.id AND c2.deleted_at IS NULL ORDER BY c2.position LIMIT 1) AS first_chapter_id FROM works w LEFT JOIN work_members wm ON wm.work_id = w.id AND wm.user_id = ? LEFT JOIN chapters c ON c.work_id = w.id AND c.deleted_at IS NULL WHERE w.deleted_at IS NULL AND (w.owner_id = ? OR wm.user_id IS NOT NULL) GROUP BY w.id, w.title, w.kind, w.status, w.updated_at, w.owner_id, wm.role ORDER BY w.updated_at DESC")
+        .bind(userId, userId, userId).all<{ id: string; title: string; kind: WorkSummary['kind']; status: string; updated_at: string; role: WorkSummary['role']; total_word_count: number; first_chapter_id: string | null }>();
+      return result.results.map((row) => ({ id: row.id, title: row.title, kind: row.kind, status: row.status, updatedAt: row.updated_at, role: row.role, totalWordCount: Number(row.total_word_count), firstChapterId: row.first_chapter_id ?? null }));
     }
   };
 }

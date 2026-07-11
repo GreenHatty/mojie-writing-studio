@@ -4,14 +4,16 @@ import { EditorContent, useEditor } from '@tiptap/react';
 import Placeholder from '@tiptap/extension-placeholder';
 import StarterKit from '@tiptap/starter-kit';
 import { useEffect, useRef } from 'react';
+import type { CanonicalContent } from '../server/contracts';
 
 type RichTextEditorProps = {
   chapterKey: string;
-  content: string;
+  content: string | CanonicalContent;
   onChange: (html: string, plainText: string) => void;
+  onDocumentChange?: (document: CanonicalContent, plainText: string, html: string) => void;
 };
 
-export function RichTextEditor({ chapterKey, content, onChange }: RichTextEditorProps) {
+export function RichTextEditor({ chapterKey, content, onChange, onDocumentChange }: RichTextEditorProps) {
   const currentChapterKey = useRef(chapterKey);
   const editor = useEditor({
     extensions: [
@@ -29,6 +31,7 @@ export function RichTextEditor({ chapterKey, content, onChange }: RichTextEditor
     },
     onUpdate: ({ editor: activeEditor }) => {
       onChange(activeEditor.getHTML(), activeEditor.getText());
+      onDocumentChange?.(activeEditor.getJSON() as CanonicalContent, activeEditor.getText(), activeEditor.getHTML());
     }
   });
 
