@@ -3,6 +3,7 @@
 import { localOnlyReasons } from '../lib/capabilities';
 import type { WorkKind, WorkRecord } from '../lib/repository';
 import { CreateWorkForm } from './create-work-form';
+import { RankingPanel } from './ranking-panel';
 
 type WorkspaceDashboardProps = {
   works: WorkRecord[];
@@ -64,6 +65,8 @@ export function WorkspaceDashboard({ works, creating = false, todayCount, onCrea
           </article>
         ))}
       </section>
+
+      <RankingPanel />
 
       <section className="dashboard-create">
         <div>
