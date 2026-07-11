@@ -1,6 +1,7 @@
 import type { Metadata } from 'next';
 import './globals.css';
 import './tools.css';
+import './visual-tools.css';
 
 export const metadata: Metadata = {
   title: '墨界·私人网文创作台',
