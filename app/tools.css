@@ -102,7 +102,22 @@
 .sprint-progress progress { width: 100%; accent-color: var(--accent); }
 .sprint-progress span { color: var(--accent); font: 600 11px "Microsoft YaHei", sans-serif; }
 
+.import-panel, .export-section { display: grid; gap: 12px; }
+.export-section { margin-top: 24px; padding-top: 20px; border-top: 1px solid var(--line); }
+.import-panel > p, .export-section > p { margin: 0; color: var(--muted); font: 11px/1.65 "Microsoft YaHei", sans-serif; }
+.file-picker { display: grid; gap: 7px; padding: 14px; border: 1px dashed var(--line); border-radius: 10px; color: var(--muted); font: 11px "Microsoft YaHei", sans-serif; background: color-mix(in srgb, var(--paper) 70%, transparent); }
+.file-picker input { width: 100%; font-size: 11px; }
+.import-preview { display: grid; gap: 8px; padding: 12px; border: 1px solid var(--line); border-radius: 10px; background: var(--paper); }
+.import-preview > strong { font-size: 13px; }
+.import-preview > span, .import-preview > p { color: var(--muted); font: 10px/1.5 "Microsoft YaHei", sans-serif; }
+.import-preview ol { max-height: 190px; overflow: auto; margin: 0; padding-left: 22px; font: 11px/1.65 "Microsoft YaHei", sans-serif; }
+.import-preview > div, .import-status { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+.import-preview button, .import-status button { min-height: 32px; padding: 0 10px; border: 1px solid var(--line); border-radius: 8px; color: var(--accent); background: transparent; font: 600 11px "Microsoft YaHei", sans-serif; }
+.import-preview button:last-child { color: white; border-color: var(--accent); background: var(--accent); }
+.import-status { min-height: 22px; color: var(--muted); font: 11px/1.5 "Microsoft YaHei", sans-serif; }
+
 @media (max-width: 520px) {
   .publication-controls, .calculator-grid, .sprint-inputs { grid-template-columns: 1fr; }
   .sprint-inputs > button { grid-column: auto; }
+  .import-preview > div, .import-status { align-items: stretch; flex-direction: column; }
 }
