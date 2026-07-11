@@ -1,0 +1,37 @@
+.ranking-panel {
+  max-width: 1180px;
+  margin: 34px auto 0;
+  padding: 18px;
+  border: 1px solid var(--line);
+  border-radius: 16px;
+  background: var(--panel);
+  box-shadow: var(--shadow);
+}
+.ranking-panel > summary { cursor: pointer; color: var(--ink); font-weight: 700; }
+.ranking-toolbar { display: grid; grid-template-columns: 150px minmax(260px, 1fr) auto; align-items: end; gap: 10px; margin-top: 18px; }
+.ranking-toolbar label { display: grid; gap: 5px; color: var(--muted); font: 11px "Microsoft YaHei", sans-serif; }
+.ranking-toolbar select, .ranking-file input { min-height: 38px; padding: 7px 9px; border: 1px solid var(--line); border-radius: 8px; color: var(--ink); background: var(--paper); }
+.ranking-toolbar button { min-height: 38px; padding: 0 11px; border: 1px solid var(--line); border-radius: 8px; color: var(--accent); background: transparent; font: 600 11px "Microsoft YaHei", sans-serif; }
+.ranking-note, .ranking-status, .ranking-empty { color: var(--muted); font: 11px/1.65 "Microsoft YaHei", sans-serif; }
+.ranking-content { display: grid; grid-template-columns: minmax(250px, .8fr) minmax(360px, 1.2fr); gap: 18px; margin-top: 18px; }
+.ranking-content h3 { margin: 0 0 10px; font-size: 16px; }
+.ranking-list { display: grid; gap: 6px; margin: 0; padding: 0; list-style: none; }
+.ranking-list li { border: 1px solid var(--line); border-radius: 9px; overflow: hidden; }
+.ranking-list li.is-active { border-color: var(--accent); background: var(--accent-soft); }
+.ranking-list button { width: 100%; padding: 9px 10px; border: 0; color: var(--ink); background: transparent; text-align: left; }
+.ranking-list strong, .ranking-list small { display: block; }
+.ranking-list strong { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 12px; }
+.ranking-list strong span { display: inline-grid; width: 22px; height: 22px; margin-right: 7px; place-items: center; border-radius: 7px; color: var(--accent); background: var(--accent-soft); }
+.ranking-list small { margin: 5px 0 0 29px; color: var(--muted); font: 10px "Microsoft YaHei", sans-serif; }
+.ranking-analysis { padding: 15px; border: 1px solid var(--line); border-radius: 12px; background: var(--paper); }
+.ranking-analysis h3 { margin: 0; font-size: 20px; }
+.ranking-analysis dl { display: grid; gap: 10px; margin: 16px 0; }
+.ranking-analysis dl div { display: grid; gap: 3px; }
+.ranking-analysis dt { color: var(--accent); font: 600 10px "Microsoft YaHei", sans-serif; }
+.ranking-analysis dd { margin: 0; line-height: 1.65; font-size: 12px; }
+.ranking-analysis footer { padding-top: 10px; border-top: 1px solid var(--line); color: var(--muted); font: 10px/1.6 "Microsoft YaHei", sans-serif; }
+.ranking-empty { padding: 30px 10px; text-align: center; }
+@media (max-width: 800px) {
+  .ranking-toolbar, .ranking-content { grid-template-columns: 1fr; }
+  .ranking-toolbar { align-items: stretch; }
+}
