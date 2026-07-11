@@ -2,7 +2,16 @@
 
 import { useMemo, useState } from 'react';
 import { generateNames, type NameCategory } from '../lib/name-generator';
-import { inspectText, normalizeChinesePunctuation, type IssueSeverity } from '../lib/text-tools';
+import {
+  findRepeatedPhrases,
+  inspectText,
+  normalizeChinesePunctuation,
+  type IssueSeverity
+} from '../lib/text-tools';
+import { countWritingCharacters } from '../lib/writing';
+import { CalculatorPanel } from './calculator-panel';
+import { FocusSprint } from './focus-sprint';
+import { QuickPhrases } from './quick-phrases';
 
 type ToolsPanelProps = {
   text: string;
@@ -43,8 +52,13 @@ export function ToolsPanel({ text }: ToolsPanelProps) {
       }),
     [text]
   );
+  const repeatedPhrases = useMemo(
+    () => findRepeatedPhrases(text, { minimumLength: 6, maximumLength: 12 }).slice(0, 8),
+    [text]
+  );
   const names = useMemo(() => generateNames({ category, count: 8, seed }), [category, seed]);
   const normalized = useMemo(() => normalizeChinesePunctuation(text), [text]);
+  const wordCount = useMemo(() => countWritingCharacters(text), [text]);
 
   return (
     <section className="tools-panel">
@@ -79,6 +93,25 @@ export function ToolsPanel({ text }: ToolsPanelProps) {
         <div className="context-empty">检查只提供建议，不会修改正文。</div>
       )}
 
+      <section className="repetition-panel">
+        <div className="panel-section-heading">
+          <div>
+            <p className="eyebrow">重复语句</p>
+            <h2>{repeatedPhrases.length ? '高频相似片段' : '未发现明显重复'}</h2>
+          </div>
+        </div>
+        {repeatedPhrases.length ? (
+          <ul>
+            {repeatedPhrases.map((match) => (
+              <li key={`${match.phrase}-${match.occurrences[0]?.start ?? 0}`}>
+                <strong>{match.phrase}</strong>
+                <span>出现 {match.occurrences.length} 次</span>
+              </li>
+            ))}
+          </ul>
+        ) : <p>人物名、地名等专有词可在设定的“词典”中记录，后续高级检查可设为白名单。</p>}
+      </section>
+
       <div className="name-generator">
         <div className="panel-section-heading">
           <div>
@@ -109,6 +142,10 @@ export function ToolsPanel({ text }: ToolsPanelProps) {
           ))}
         </ul>
       </div>
+
+      <QuickPhrases />
+      <CalculatorPanel />
+      <FocusSprint currentWordCount={wordCount} />
     </section>
   );
 }
