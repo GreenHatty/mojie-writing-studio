@@ -128,12 +128,27 @@ export function ServerEditor({ chapterId, csrf, userId, draftDek, onBack }: { ch
     pendingOperationId.current = null; setReloadKey((value) => value + 1);
   }
 
+  async function createChapter(volumeId: string) {
+    const title = window.prompt('章节名称'); if (!title?.trim() || !directory) return;
+    await localWrite.current;
+    const response = await fetch(`/api/works/${encodeURIComponent(directory.work.id)}/chapters`, { method: 'POST', credentials: 'same-origin', headers: { 'Content-Type': 'application/json', 'X-CSRF-Token': csrf }, body: JSON.stringify({ volumeId, title }) });
+    if (!response.ok) { setState('error'); return; }
+    const created = await response.json() as { id: string }; setActiveChapterId(created.id); setLeftOpen(false);
+  }
+
+  async function updateChapterMetadata(targetChapterId: string, input: { action: 'rename'; title: string } | { action: 'move'; direction: 'up' | 'down' }) {
+    const response = await fetch(`/api/chapters/${encodeURIComponent(targetChapterId)}/metadata`, { method: 'PATCH', credentials: 'same-origin', headers: { 'Content-Type': 'application/json', 'X-CSRF-Token': csrf }, body: JSON.stringify(input) });
+    if (!response.ok) { setState('error'); return; } setReloadKey((value) => value + 1);
+  }
+
+  function renameChapter(targetChapterId: string, currentTitle: string) { const title = window.prompt('新的章节名称', currentTitle); if (title?.trim()) void updateChapterMetadata(targetChapterId, { action: 'rename', title }); }
+
   if (!chapter || !document) return <main className="app-loading">{state === 'error' ? '章节加载失败' : '正在打开章节…'}</main>;
   const stateLabel: Record<SaveState, string> = { idle: '已同步', dirty: '本地已保存', saving: '正在同步…', saved: '已保存', offline: '离线草稿待同步', conflict: '检测到版本冲突', error: '保存失败' };
   return <main className="server-editor">
     <header className="server-editor-header"><button type="button" onClick={() => void localWrite.current.then(onBack)}>返回作品</button><h1><strong>{directory?.work.title ?? '作品'}</strong><span> / {chapter.title}</span></h1><div><button className="mobile-panel-toggle" type="button" onClick={() => setLeftOpen((value) => !value)}>目录</button><button className="mobile-panel-toggle" type="button" onClick={() => setRightOpen((value) => !value)}>辅助</button><span>{Array.from(plainText.replace(/\s/g, '')).length} 字</span><span aria-live="polite">{stateLabel[state]}</span><button type="button" onClick={() => void save()}>立即保存</button></div></header>
     <div className="server-editor-layout">
-      <aside className="chapter-directory" data-open={leftOpen} aria-label="作品目录"><h2>目录</h2>{directory?.volumes.map((volume) => <section key={volume.id}><h3>{volume.title}</h3>{volume.chapters.map((item) => <button className={item.id === activeChapterId ? 'is-active' : ''} key={item.id} onClick={() => void switchChapter(item.id)}><span>{item.title}</span><small>{item.wordCount} 字</small></button>)}</section>)}</aside>
+      <aside className="chapter-directory" data-open={leftOpen} aria-label="作品目录"><h2>目录</h2>{directory?.volumes.map((volume) => <section key={volume.id}><div className="volume-title"><h3>{volume.title}</h3>{directory.work.role === 'WORK_OWNER' || directory.work.role === 'EDITOR' ? <button aria-label={`在${volume.title}中新建章节`} onClick={() => void createChapter(volume.id)}>＋</button> : null}</div>{volume.chapters.map((item) => <div className={`directory-row ${item.id === activeChapterId ? 'is-active' : ''}`} key={item.id}><button className="chapter-link" onClick={() => void switchChapter(item.id)}><span>{item.title}</span><small>{item.wordCount} 字</small></button>{directory.work.role === 'WORK_OWNER' || directory.work.role === 'EDITOR' ? <div className="chapter-actions"><button aria-label={`重命名${item.title}`} onClick={() => renameChapter(item.id, item.title)}>✎</button><button aria-label={`上移${item.title}`} onClick={() => void updateChapterMetadata(item.id, { action: 'move', direction: 'up' })}>↑</button><button aria-label={`下移${item.title}`} onClick={() => void updateChapterMetadata(item.id, { action: 'move', direction: 'down' })}>↓</button></div> : null}</div>)}</section>)}</aside>
       <section className="server-editor-canvas"><RichTextEditor chapterKey={chapter.id} content={document} onChange={() => undefined} onDocumentChange={update} /></section>
       <aside className="editor-context" data-open={rightOpen} aria-label="章节辅助栏"><nav><button className={rightTab === 'note' ? 'is-active' : ''} onClick={() => setRightTab('note')}>备注</button><button className={rightTab === 'versions' ? 'is-active' : ''} onClick={() => setRightTab('versions')}>版本</button><button className={rightTab === 'conflicts' ? 'is-active' : ''} onClick={() => setRightTab('conflicts')}>冲突 {context?.conflicts.length ? `(${context.conflicts.length})` : ''}</button></nav>
         {rightTab === 'note' ? <section><h2>私人备注</h2><p>仅你本人可见。</p><textarea aria-label="私人备注" value={note} onChange={(event) => setNote(event.target.value)} /><button onClick={() => void saveNote()}>保存备注</button></section> : null}

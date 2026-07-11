@@ -187,8 +187,13 @@ button:disabled { cursor: not-allowed; opacity: 0.65; }
 .chapter-directory { border-right: 1px solid rgba(70, 62, 48, .12); padding: 1rem .75rem; }
 .chapter-directory h2, .editor-context h2 { margin: .35rem .45rem 1rem; font-size: .9rem; }
 .chapter-directory h3 { margin: 1rem .45rem .4rem; color: #766d5e; font-size: .75rem; text-transform: uppercase; letter-spacing: .08em; }
-.chapter-directory section > button { display: flex; width: 100%; justify-content: space-between; gap: .5rem; border: 0; border-radius: .55rem; background: transparent; padding: .65rem .7rem; text-align: left; cursor: pointer; }
-.chapter-directory section > button:hover, .chapter-directory section > button.is-active { background: rgba(118, 96, 61, .12); }
+.volume-title { display: flex; align-items: center; justify-content: space-between; }
+.volume-title button, .chapter-actions button { border: 0; border-radius: .4rem; background: transparent; padding: .3rem; color: #766d5e; cursor: pointer; }
+.directory-row { display: flex; align-items: center; border-radius: .55rem; }
+.directory-row:hover, .directory-row.is-active { background: rgba(118, 96, 61, .12); }
+.chapter-link { display: flex; min-width: 0; flex: 1; justify-content: space-between; gap: .5rem; border: 0; background: transparent; padding: .65rem .7rem; text-align: left; cursor: pointer; }
+.chapter-actions { display: none; gap: .05rem; padding-right: .3rem; }
+.directory-row:hover .chapter-actions, .directory-row:focus-within .chapter-actions { display: flex; }
 .chapter-directory small { color: #8a8173; white-space: nowrap; }
 .editor-context { border-left: 1px solid rgba(70, 62, 48, .12); padding: 1rem; }
 .editor-context nav { display: grid; grid-template-columns: repeat(3, 1fr); gap: .3rem; margin-bottom: 1rem; }
