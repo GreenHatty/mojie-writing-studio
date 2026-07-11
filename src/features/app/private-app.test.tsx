@@ -1,9 +1,9 @@
-import { fireEvent, render, screen } from '@testing-library/react';
+import { cleanup, fireEvent, render, screen } from '@testing-library/react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { PrivateApp } from './private-app';
 
 vi.mock('../editor/server-editor', () => ({ ServerEditor: ({ chapterId }: { chapterId: string }) => <h1>编辑章节 {chapterId}</h1> }));
-afterEach(() => vi.unstubAllGlobals());
+afterEach(() => { cleanup(); vi.unstubAllGlobals(); });
 
 describe('PrivateApp', () => {
   it('shows login when the session is anonymous', async () => {
@@ -21,5 +21,16 @@ describe('PrivateApp', () => {
     render(<PrivateApp />);
     fireEvent.click(await screen.findByRole('button', { name: /真实作品/ }));
     expect(await screen.findByRole('heading', { name: '编辑章节 c1' })).toBeTruthy();
+  });
+
+  it('locks the private workspace after logout', async () => {
+    const fetchMock = vi.fn()
+      .mockResolvedValueOnce(Response.json({ userId: 'writer-1' }))
+      .mockResolvedValueOnce(Response.json({ dek: btoa(String.fromCharCode(...new Uint8Array(32))) }))
+      .mockResolvedValueOnce(Response.json({ works: [] }))
+      .mockResolvedValueOnce(Response.json({ ok: true }));
+    vi.stubGlobal('fetch', fetchMock); render(<PrivateApp />);
+    fireEvent.click(await screen.findByRole('button', { name: '退出登录' }));
+    expect(await screen.findByRole('heading', { name: '登录墨界' })).toBeTruthy();
   });
 });

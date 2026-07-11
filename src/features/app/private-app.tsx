@@ -78,6 +78,12 @@ export function PrivateApp() {
     setActiveChapterId(payload.chapter.id);
   }
 
+  async function logout() {
+    const response = await fetch('/api/auth/logout', { method: 'POST', credentials: 'same-origin' });
+    if (!response.ok) { setMessage('退出登录失败'); return; }
+    draftDek?.fill(0); setDraftDek(null); setUserId(null); setWorks([]); setActiveChapterId(null); setAccount(''); setPassword(''); setState('anonymous');
+  }
+
   if (state === 'loading') return <main className="app-loading">正在验证私人空间…</main>;
   if (state === 'error') return <main className="empty-workspace"><h1>运行环境尚未配置</h1><p className="empty-copy">请配置 D1、R2 和受保护密钥后重试。</p></main>;
   if (state === 'anonymous') return <main className="empty-workspace">
@@ -90,7 +96,7 @@ export function PrivateApp() {
   </main>;
   if (activeChapterId && draftDek && userId) return <ServerEditor chapterId={activeChapterId} csrf={csrf} userId={userId} draftDek={draftDek} onBack={() => setActiveChapterId(null)} />;
   return <main className="private-dashboard">
-    <header><div><p className="eyebrow">PRIVATE WRITING STUDIO</p><h1>我的作品</h1></div><div className="dashboard-actions"><button onClick={() => void createWork('long')}>新建长篇</button><button onClick={() => void createWork('short')}>新建短篇</button><button onClick={() => void createWork('essay')}>新建随笔</button></div></header>
+    <header><div><p className="eyebrow">PRIVATE WRITING STUDIO</p><h1>我的作品</h1></div><div className="dashboard-actions"><button onClick={() => void createWork('long')}>新建长篇</button><button onClick={() => void createWork('short')}>新建短篇</button><button onClick={() => void createWork('essay')}>新建随笔</button><button onClick={() => void logout()}>退出登录</button></div></header>
     {message ? <p role="alert">{message}</p> : null}
     {works.length ? <section className="work-grid">{works.map((work) => <button className="work-card" disabled={!work.firstChapterId} key={work.id} onClick={() => setActiveChapterId(work.firstChapterId)}><p>{work.kind === 'long' ? '长篇小说' : work.kind === 'short' ? '短篇小说' : '随笔'}</p><h2>{work.title}</h2><span>{work.totalWordCount} 字</span><small>{work.role}</small></button>)}</section> : <section className="dashboard-empty"><h2>还没有作品</h2><p>从长篇、短篇或随笔开始。</p></section>}
   </main>;
