@@ -19,7 +19,7 @@ CREATE TABLE IF NOT EXISTS sync_operations (client_operation_id TEXT PRIMARY KEY
 CREATE TABLE IF NOT EXISTS migration_runs (migration_id TEXT PRIMARY KEY, user_id TEXT NOT NULL REFERENCES users(id), source_database TEXT NOT NULL, summary_json TEXT, status TEXT NOT NULL, error_code TEXT, created_at TEXT NOT NULL, updated_at TEXT NOT NULL);
 CREATE TABLE IF NOT EXISTS profile_settings (user_id TEXT PRIMARY KEY REFERENCES users(id), theme TEXT NOT NULL, font_size INTEGER NOT NULL, line_height REAL NOT NULL, editor_width TEXT NOT NULL, left_column_width INTEGER NOT NULL, right_column_width INTEGER NOT NULL, updated_at TEXT NOT NULL);
 CREATE TABLE IF NOT EXISTS audit_logs (id TEXT PRIMARY KEY, actor_id TEXT REFERENCES users(id), action TEXT NOT NULL, target_type TEXT NOT NULL, target_id TEXT NOT NULL, metadata_json TEXT, created_at TEXT NOT NULL);
-CREATE TABLE IF NOT EXISTS file_metadata (id TEXT PRIMARY KEY, owner_id TEXT NOT NULL REFERENCES users(id), work_id TEXT REFERENCES works(id), object_key TEXT NOT NULL UNIQUE, content_type TEXT NOT NULL, size_bytes INTEGER NOT NULL, content_hash TEXT NOT NULL, created_at TEXT NOT NULL);
+CREATE TABLE IF NOT EXISTS file_metadata (id TEXT PRIMARY KEY, owner_id TEXT NOT NULL REFERENCES users(id), work_id TEXT REFERENCES works(id), object_key TEXT NOT NULL UNIQUE, original_name TEXT NOT NULL, content_type TEXT NOT NULL, size_bytes INTEGER NOT NULL, content_hash TEXT NOT NULL, created_at TEXT NOT NULL);
 
 CREATE INDEX IF NOT EXISTS works_owner_deleted_idx ON works(owner_id, deleted_at);
 CREATE INDEX IF NOT EXISTS chapters_work_volume_position_idx ON chapters(work_id, volume_id, position);
