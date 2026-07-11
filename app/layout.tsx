@@ -2,6 +2,7 @@ import type { Metadata } from 'next';
 import './globals.css';
 import './auth.css';
 import './tools.css';
+import './writing-assistant.css';
 import './cloud-docx.css';
 import './visual-tools.css';
 import './ranking.css';
