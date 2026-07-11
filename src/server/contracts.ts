@@ -13,6 +13,8 @@ export type RuntimeBindings = {
   APP_ORIGIN?: string;
   OWNER_INITIALIZATION_KEY?: string;
   LOCAL_DRAFT_KEK?: string;
+  MOJIE_ADMIN_TOKEN?: string;
+  MOJIE_BACKUP_MASTER_KEY?: string;
   NODE_ENV?: string;
 };
 
@@ -22,6 +24,8 @@ export type RequiredRuntimeBindings = RuntimeBindings & {
   APP_ORIGIN: string;
   OWNER_INITIALIZATION_KEY: string;
   LOCAL_DRAFT_KEK: string;
+  MOJIE_ADMIN_TOKEN: string;
+  MOJIE_BACKUP_MASTER_KEY: string;
 };
 
 export type SyncOperationRecord = {
