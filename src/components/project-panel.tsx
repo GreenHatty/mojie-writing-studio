@@ -3,12 +3,10 @@
 import { useEffect, useMemo, useState } from 'react';
 import type { ProjectEntity, ProjectEntityKind } from '../lib/project-model';
 import type { WritingRepository } from '../lib/repository';
+import { SearchReplacePanel } from './search-replace-panel';
 import { VisualSettingsPanel } from './visual-settings-panel';
 
-type ProjectPanelProps = {
-  repository: WritingRepository;
-  workId: string;
-};
+type ProjectPanelProps = { repository: WritingRepository; workId: string };
 
 const ENTITY_TYPES: Array<{ kind: ProjectEntityKind; label: string; description: string }> = [
   { kind: 'outline', label: '大纲', description: '总纲、分卷目标、章节细纲与伏笔线' },
@@ -51,9 +49,7 @@ export function ProjectPanel({ repository, workId }: ProjectPanelProps) {
     void repository.listEntities(workId, kind, { includeDeleted }).then((records) => {
       if (!cancelled) setEntities(records);
     });
-    return () => {
-      cancelled = true;
-    };
+    return () => { cancelled = true; };
   }, [includeDeleted, kind, repository, workId]);
 
   useEffect(() => {
@@ -78,10 +74,7 @@ export function ProjectPanel({ repository, workId }: ProjectPanelProps) {
   }
 
   async function save() {
-    if (!title.trim()) {
-      setStatus('请先填写名称。');
-      return;
-    }
+    if (!title.trim()) { setStatus('请先填写名称。'); return; }
     setBusy(true);
     try {
       const saved = await repository.saveEntity(workId, {
@@ -122,81 +115,32 @@ export function ProjectPanel({ repository, workId }: ProjectPanelProps) {
     <section className="project-panel">
       <div className="project-kind-tabs" aria-label="设定类型" role="tablist">
         {ENTITY_TYPES.map((item) => (
-          <button
-            aria-selected={kind === item.kind}
-            key={item.kind}
-            onClick={() => changeKind(item.kind)}
-            role="tab"
-            type="button"
-          >
-            {item.label}
-          </button>
+          <button aria-selected={kind === item.kind} key={item.kind} onClick={() => changeKind(item.kind)} role="tab" type="button">{item.label}</button>
         ))}
       </div>
-
-      <div className="project-intro">
-        <p className="eyebrow">{currentType.label}</p>
-        <p>{currentType.description}</p>
-      </div>
-
+      <div className="project-intro"><p className="eyebrow">{currentType.label}</p><p>{currentType.description}</p></div>
       <div className="project-list-actions">
         <button onClick={clearForm} type="button">新建{currentType.label}</button>
-        <label>
-          <input
-            checked={includeDeleted}
-            onChange={(event) => setIncludeDeleted(event.target.checked)}
-            type="checkbox"
-          />
-          显示回收站
-        </label>
+        <label><input checked={includeDeleted} onChange={(event) => setIncludeDeleted(event.target.checked)} type="checkbox" />显示回收站</label>
       </div>
-
       {entities.length ? (
         <ul className="project-entity-list">
           {entities.map((entity) => (
             <li className={entity.id === selectedId ? 'is-active' : ''} key={entity.id}>
-              <button onClick={() => setSelectedId(entity.id)} type="button">
-                <strong>{entity.title}</strong>
-                <small>{entity.deletedAt ? '回收站' : labelFor(entity.kind)}</small>
-              </button>
-              <button disabled={busy} onClick={() => void toggleDeleted(entity)} type="button">
-                {entity.deletedAt ? '恢复' : '删除'}
-              </button>
+              <button onClick={() => setSelectedId(entity.id)} type="button"><strong>{entity.title}</strong><small>{entity.deletedAt ? '回收站' : labelFor(entity.kind)}</small></button>
+              <button disabled={busy} onClick={() => void toggleDeleted(entity)} type="button">{entity.deletedAt ? '恢复' : '删除'}</button>
             </li>
           ))}
         </ul>
-      ) : (
-        <div className="context-empty">尚无{currentType.label}记录。</div>
-      )}
-
+      ) : <div className="context-empty">尚无{currentType.label}记录。</div>}
       <div className="project-editor-form">
-        <label>
-          <span>名称</span>
-          <input
-            maxLength={100}
-            onChange={(event) => setTitle(event.target.value)}
-            placeholder={`输入${currentType.label}名称`}
-            value={title}
-          />
-        </label>
-        <label>
-          <span>摘要与重点</span>
-          <textarea
-            onChange={(event) => setSummary(event.target.value)}
-            placeholder={`记录${currentType.label}的核心信息、关联和待完善内容`}
-            value={summary}
-          />
-        </label>
-        <div className="project-form-footer">
-          <span role="status">{status}</span>
-          <button disabled={busy} onClick={() => void save()} type="button">{busy ? '正在保存…' : '保存'}</button>
-        </div>
+        <label><span>名称</span><input maxLength={100} onChange={(event) => setTitle(event.target.value)} placeholder={`输入${currentType.label}名称`} value={title} /></label>
+        <label><span>摘要与重点</span><textarea onChange={(event) => setSummary(event.target.value)} placeholder={`记录${currentType.label}的核心信息、关联和待完善内容`} value={summary} /></label>
+        <div className="project-form-footer"><span role="status">{status}</span><button disabled={busy} onClick={() => void save()} type="button">{busy ? '正在保存…' : '保存'}</button></div>
       </div>
-
+      <SearchReplacePanel repository={repository} workId={workId} />
       <section className="visual-tools-section">
-        <button className="visual-tools-toggle" onClick={() => setShowVisualTools((value) => !value)} type="button">
-          {showVisualTools ? '收起时间线、关系图与地图' : '打开时间线、关系图与地图'}
-        </button>
+        <button className="visual-tools-toggle" onClick={() => setShowVisualTools((value) => !value)} type="button">{showVisualTools ? '收起时间线、关系图与地图' : '打开时间线、关系图与地图'}</button>
         {showVisualTools ? <VisualSettingsPanel repository={repository} workId={workId} /> : null}
       </section>
     </section>
