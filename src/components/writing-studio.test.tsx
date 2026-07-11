@@ -1,5 +1,5 @@
 import 'fake-indexeddb/auto';
-import { fireEvent, render, screen } from '@testing-library/react';
+import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { afterEach, describe, expect, it } from 'vitest';
 import { createWritingRepository, type WritingRepository } from '../lib/repository';
 import { WritingStudio } from './writing-studio';
@@ -16,6 +16,8 @@ function makeRepository(): WritingRepository {
 }
 
 afterEach(async () => {
+  cleanup();
+  await new Promise((resolve) => setTimeout(resolve, 0));
   await Promise.all(repositories.splice(0).map((repository) => repository.destroy()));
 });
 
@@ -46,6 +48,7 @@ describe('WritingStudio', () => {
 
     fireEvent.click(screen.getByRole('button', { name: '继续写作：山河既白' }));
     expect(await screen.findByText('第一卷')).toBeTruthy();
+    await waitFor(() => expect(screen.getByLabelText('正文内容')).toBeTruthy());
     expect(screen.getAllByText('山河既白').length).toBeGreaterThan(0);
   });
 });
