@@ -1,5 +1,6 @@
 'use client';
 
+import { localOnlyReasons } from '../lib/capabilities';
 import type { WorkKind, WorkRecord } from '../lib/repository';
 import { CreateWorkForm } from './create-work-form';
 
@@ -26,6 +27,8 @@ function formatDate(value: string): string {
 }
 
 export function WorkspaceDashboard({ works, creating = false, todayCount, onCreate, onOpen }: WorkspaceDashboardProps) {
+  const capabilityNotes = localOnlyReasons();
+
   return (
     <main className="workspace-dashboard">
       <header className="dashboard-header">
@@ -39,6 +42,13 @@ export function WorkspaceDashboard({ works, creating = false, todayCount, onCrea
           <span>今日新增字数</span>
         </div>
       </header>
+
+      {capabilityNotes.length ? (
+        <details className="capability-notice">
+          <summary>当前运行模式：本地优先</summary>
+          <ul>{capabilityNotes.map((note) => <li key={note}>{note}</li>)}</ul>
+        </details>
+      ) : null}
 
       <section aria-label="作品列表" className="work-grid">
         {works.map((work) => (
