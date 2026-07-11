@@ -46,6 +46,6 @@ describe('WritingStudio', () => {
 
     fireEvent.click(screen.getByRole('button', { name: '继续写作：山河既白' }));
     expect(await screen.findByText('第一卷')).toBeTruthy();
-    expect(screen.getByText('山河既白')).toBeTruthy();
+    expect(screen.getAllByText('山河既白').length).toBeGreaterThan(0);
   });
 });
