@@ -1,5 +1,5 @@
-import { WritingStudio } from '../src/components/writing-studio';
+import { AuthenticatedApp } from '../src/components/authenticated-app';
 
 export default function Home() {
-  return <WritingStudio />;
+  return <AuthenticatedApp />;
 }
