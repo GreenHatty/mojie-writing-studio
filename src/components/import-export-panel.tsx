@@ -11,6 +11,8 @@ import {
   type PortableWork
 } from '../lib/import-export';
 import type { WorkDetail } from '../lib/repository';
+import { CloudOperationsPanel } from './cloud-operations-panel';
+import { DocxRoundTripPanel } from './docx-roundtrip-panel';
 import { ImportPanel } from './import-panel';
 import { PublicationPanel } from './publication-panel';
 
@@ -58,9 +60,11 @@ export function ImportExportPanel({ work }: ImportExportPanelProps) {
 
   return (
     <section className="import-export-panel">
+      <CloudOperationsPanel work={work} />
       <ImportPanel work={work} />
+      <DocxRoundTripPanel workId={work.id} />
       <section className="export-section">
-        <div className="panel-section-heading"><div><p className="eyebrow">导出与备份</p><h2>下载安全副本</h2></div></div>
+        <div className="panel-section-heading"><div><p className="eyebrow">导出与本地备份</p><h2>下载安全副本</h2></div></div>
         <p>发布用文件不包含章节备注。墨界项目包用于正文和目录的本地备份。</p>
         <div className="export-grid">
           <button onClick={() => download(exportWorkAsText(portableWork), 'text/plain', `${fileName}.txt`)} type="button"><strong>TXT</strong><span>纯文本全书</span></button>
@@ -68,7 +72,6 @@ export function ImportExportPanel({ work }: ImportExportPanelProps) {
           <button onClick={() => download(exportWorkAsHtml(portableWork), 'text/html', `${fileName}.html`)} type="button"><strong>HTML</strong><span>安全转义预览</span></button>
           <button onClick={() => download(exportProjectJson(project), 'application/json', `${fileName}.mojie.json`)} type="button"><strong>项目包</strong><span>正文与目录备份</span></button>
         </div>
-        <div className="export-warning"><strong>DOCX说明</strong><p>当前版本尚未提供可靠的复杂 DOCX 往返。不要把 HTML 下载改名为 DOCX；后续接入正式解析器时必须保留原始上传文件。</p></div>
       </section>
       {selectedChapter ? (
         <div className="publication-workflow">
