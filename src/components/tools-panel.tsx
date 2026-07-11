@@ -12,6 +12,7 @@ import { countWritingCharacters } from '../lib/writing';
 import { CalculatorPanel } from './calculator-panel';
 import { FocusSprint } from './focus-sprint';
 import { QuickPhrases } from './quick-phrases';
+import { WritingAssistantPanel } from './writing-assistant-panel';
 
 type ToolsPanelProps = {
   text: string;
@@ -62,6 +63,8 @@ export function ToolsPanel({ text }: ToolsPanelProps) {
 
   return (
     <section className="tools-panel">
+      <WritingAssistantPanel text={text} />
+
       <div className="panel-section-heading">
         <div>
           <p className="eyebrow">文本检查</p>
