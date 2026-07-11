@@ -3,6 +3,8 @@
   "name": "mojie-writing-studio",
   "compatibility_date": "2026-07-10",
   "compatibility_flags": ["nodejs_compat"],
+  // Configure the DB (D1) and OBJECTS (R2) bindings in the protected
+  // Sites/Cloudflare environment. Never commit database IDs or bucket secrets.
   "main": "vinext/server/fetch-handler",
   "assets": {
     "directory": "dist/client",
