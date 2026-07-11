@@ -22,10 +22,10 @@
 
 ## 运行
 
-需要 Node.js 22。
+需要 Node.js 22。Vinext 和其 Cloudflare 适配器目前使用预发布版本，npm 需要采用兼容 peer 解析方式：
 
 ```bash
-npm ci
+npm ci --legacy-peer-deps
 npm run dev
 ```
 
