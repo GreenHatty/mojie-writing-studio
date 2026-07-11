@@ -212,17 +212,25 @@ function extractParagraphs(documentXml: string): DocxParagraph[] {
 }
 
 function replaceParagraphText(paragraphXml: string, nextText: string): string {
-  let replaced = false;
-  const result = paragraphXml.replace(/<w:t(\s[^>]*)?>([\s\S]*?)<\/w:t>/gu, (_full, attributes: string | undefined) => {
-    if (replaced) return `<w:t${attributes ?? ''}></w:t>`;
-    replaced = true;
-    const needsSpace = /^\s|\s$/u.test(nextText);
+  const textPattern = /<w:t(\s[^>]*)?>([\s\S]*?)<\/w:t>/gu;
+  const nodes = [...paragraphXml.matchAll(textPattern)];
+  if (!nodes.length) {
+    return paragraphXml.replace(/<\/w:p>$/u, `<w:r><w:t xml:space="preserve">${encodeXml(nextText)}</w:t></w:r></w:p>`);
+  }
+
+  let cursor = 0;
+  let nodeIndex = 0;
+  return paragraphXml.replace(textPattern, (_full, attributes: string | undefined, encodedOriginal: string | undefined) => {
+    const originalLength = decodeXml(encodedOriginal ?? '').length;
+    const isLast = nodeIndex === nodes.length - 1;
+    const segment = isLast ? nextText.slice(cursor) : nextText.slice(cursor, cursor + originalLength);
+    cursor += segment.length;
+    nodeIndex += 1;
+    const needsSpace = /^\s|\s$/u.test(segment);
     const existing = attributes ?? '';
     const finalAttributes = needsSpace && !/xml:space=/u.test(existing) ? `${existing} xml:space="preserve"` : existing;
-    return `<w:t${finalAttributes}>${encodeXml(nextText)}</w:t>`;
+    return `<w:t${finalAttributes}>${encodeXml(segment)}</w:t>`;
   });
-  if (replaced) return result;
-  return paragraphXml.replace(/<\/w:p>$/u, `<w:r><w:t xml:space="preserve">${encodeXml(nextText)}</w:t></w:r></w:p>`);
 }
 
 function updateDocumentXml(documentXml: string, paragraphTexts: string[]): string {
