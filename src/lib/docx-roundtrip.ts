@@ -19,6 +19,12 @@ export type DocxRoundTripSession = {
 const textEncoder = new TextEncoder();
 const textDecoder = new TextDecoder();
 
+export function toArrayBuffer(bytes: Uint8Array): ArrayBuffer {
+  const copy = new Uint8Array(bytes.byteLength);
+  copy.set(bytes);
+  return copy.buffer;
+}
+
 function readU16(view: DataView, offset: number): number {
   return view.getUint16(offset, true);
 }
@@ -64,7 +70,7 @@ function concatBytes(parts: Uint8Array[]): Uint8Array {
 
 async function inflateRaw(data: Uint8Array): Promise<Uint8Array> {
   if (typeof DecompressionStream === 'undefined') throw new Error('当前运行环境不支持解压DOCX。');
-  const stream = new Blob([data]).stream().pipeThrough(new DecompressionStream('deflate-raw'));
+  const stream = new Blob([toArrayBuffer(data)]).stream().pipeThrough(new DecompressionStream('deflate-raw'));
   return new Uint8Array(await new Response(stream).arrayBuffer());
 }
 
@@ -229,7 +235,7 @@ function updateDocumentXml(documentXml: string, paragraphTexts: string[]): strin
 }
 
 export async function sha256Hex(bytes: Uint8Array): Promise<string> {
-  const digest = await crypto.subtle.digest('SHA-256', bytes);
+  const digest = await crypto.subtle.digest('SHA-256', toArrayBuffer(bytes));
   return [...new Uint8Array(digest)].map((value) => value.toString(16).padStart(2, '0')).join('');
 }
 
