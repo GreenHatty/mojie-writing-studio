@@ -1,0 +1,238 @@
+name: Cloudflare Preview Acceptance
+
+on:
+  pull_request:
+    branches:
+      - main
+  workflow_dispatch:
+
+concurrency:
+  group: cloudflare-preview-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  preview:
+    if: github.event_name == 'workflow_dispatch' || github.event.pull_request.head.repo.full_name == github.repository
+    runs-on: ubuntu-latest
+    timeout-minutes: 35
+    env:
+      CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+      CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+      MOJIE_AUTHORIZED_RANKING_URL: ${{ vars.MOJIE_AUTHORIZED_RANKING_URL }}
+      MOJIE_RANKING_AUTHORIZATION: ${{ vars.MOJIE_RANKING_AUTHORIZATION }}
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Check Cloudflare authorization
+        id: cloudflare-auth
+        shell: bash
+        run: |
+          if [[ -z "${CLOUDFLARE_ACCOUNT_ID}" || -z "${CLOUDFLARE_API_TOKEN}" ]]; then
+            echo "ready=false" >> "$GITHUB_OUTPUT"
+            {
+              echo "## Cloudflare preview not executed"
+              echo
+              echo "Repository secrets CLOUDFLARE_ACCOUNT_ID and CLOUDFLARE_API_TOKEN are not configured."
+              echo "No external resources were created."
+            } >> "$GITHUB_STEP_SUMMARY"
+          else
+            echo "ready=true" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Setup Node
+        if: steps.cloudflare-auth.outputs.ready == 'true'
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Install dependencies
+        if: steps.cloudflare-auth.outputs.ready == 'true'
+        run: npm ci --legacy-peer-deps --loglevel=error --no-audit --no-fund
+
+      - name: Provision isolated D1 and R2 resources
+        if: steps.cloudflare-auth.outputs.ready == 'true'
+        id: provision
+        shell: bash
+        run: |
+          set -euo pipefail
+          suffix="${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}"
+          worker_name="mojie-preview-${suffix}"
+          d1_name="${worker_name}-db"
+          docx_bucket="${worker_name}-docx"
+          backup_bucket="${worker_name}-backup"
+
+          npx wrangler d1 create "$d1_name" --location apac
+          d1_json="$(npx wrangler d1 list --json)"
+          d1_id="$(D1_JSON="$d1_json" D1_NAME="$d1_name" node --input-type=module -e '
+            const values = JSON.parse(process.env.D1_JSON || "[]");
+            const item = values.find((value) => value.name === process.env.D1_NAME);
+            if (!item) throw new Error(`D1 database not found: ${process.env.D1_NAME}`);
+            process.stdout.write(String(item.uuid || item.id));
+          ')"
+
+          npx wrangler r2 bucket create "$docx_bucket" --location apac
+          npx wrangler r2 bucket create "$backup_bucket" --location apac
+          npx wrangler d1 migrations apply "$d1_name" --remote
+
+          admin_token="$(node --input-type=module -e "import { randomBytes } from 'node:crypto'; process.stdout.write(randomBytes(48).toString('base64url'))")"
+          backup_key="$(node --input-type=module -e "import { randomBytes } from 'node:crypto'; process.stdout.write(randomBytes(48).toString('base64url'))")"
+          echo "::add-mask::$admin_token"
+          echo "::add-mask::$backup_key"
+
+          {
+            echo "CLOUDFLARE_WORKER_NAME=$worker_name"
+            echo "CLOUDFLARE_D1_DATABASE_ID=$d1_id"
+            echo "CLOUDFLARE_D1_DATABASE_NAME=$d1_name"
+            echo "CLOUDFLARE_DOCX_BUCKET_NAME=$docx_bucket"
+            echo "CLOUDFLARE_BACKUP_BUCKET_NAME=$backup_bucket"
+            echo "MOJIE_ADMIN_TOKEN=$admin_token"
+            echo "MOJIE_BACKUP_MASTER_KEY=$backup_key"
+            echo "MOJIE_D1_NAME=$d1_name"
+            echo "MOJIE_ACCEPTANCE_REPORT=cloudflare-preview-acceptance.json"
+          } >> "$GITHUB_ENV"
+
+          {
+            echo "worker_name=$worker_name"
+            echo "d1_name=$d1_name"
+            echo "docx_bucket=$docx_bucket"
+            echo "backup_bucket=$backup_bucket"
+          } >> "$GITHUB_OUTPUT"
+
+      - name: Verify source before deployment
+        if: steps.cloudflare-auth.outputs.ready == 'true'
+        run: |
+          node --check scripts/mojie-api.mjs
+          node --check scripts/mojie-extended-api.mjs
+          node --check scripts/mojie-privacy-guard.mjs
+          node --check scripts/cloudflare-preview-acceptance.mjs
+          npm test
+          npm run typecheck
+
+      - name: Build preview Worker
+        if: steps.cloudflare-auth.outputs.ready == 'true'
+        run: npm run build
+
+      - name: Deploy isolated preview Worker
+        if: steps.cloudflare-auth.outputs.ready == 'true'
+        id: deploy
+        uses: cloudflare/wrangler-action@v3
+        with:
+          apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          command: deploy --config dist/wrangler.json
+          secrets: |
+            MOJIE_ADMIN_TOKEN
+            MOJIE_BACKUP_MASTER_KEY
+        env:
+          MOJIE_ADMIN_TOKEN: ${{ env.MOJIE_ADMIN_TOKEN }}
+          MOJIE_BACKUP_MASTER_KEY: ${{ env.MOJIE_BACKUP_MASTER_KEY }}
+
+      - name: Run cross-account and storage acceptance
+        if: steps.cloudflare-auth.outputs.ready == 'true'
+        env:
+          MOJIE_PREVIEW_URL: ${{ steps.deploy.outputs.deployment-url }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          for attempt in {1..30}; do
+            if curl --fail --silent --show-error "$MOJIE_PREVIEW_URL/api/site/public" >/dev/null; then
+              break
+            fi
+            if [[ "$attempt" == "30" ]]; then
+              echo "Preview Worker did not become ready." >&2
+              exit 1
+            fi
+            sleep 2
+          done
+          node scripts/cloudflare-preview-acceptance.mjs
+
+      - name: Upload acceptance report
+        if: always() && steps.cloudflare-auth.outputs.ready == 'true'
+        uses: actions/upload-artifact@v4
+        with:
+          name: cloudflare-preview-acceptance-${{ github.run_id }}
+          path: cloudflare-preview-acceptance.json
+          if-no-files-found: warn
+          retention-days: 30
+
+      - name: Record preview result
+        if: success() && steps.cloudflare-auth.outputs.ready == 'true'
+        env:
+          PREVIEW_URL: ${{ steps.deploy.outputs.deployment-url }}
+        run: |
+          {
+            echo "## Cloudflare preview acceptance passed"
+            echo
+            echo "- Worker: \`${CLOUDFLARE_WORKER_NAME}\`"
+            echo "- D1: \`${CLOUDFLARE_D1_DATABASE_NAME}\`"
+            echo "- DOCX R2: \`${CLOUDFLARE_DOCX_BUCKET_NAME}\`"
+            echo "- Backup R2: \`${CLOUDFLARE_BACKUP_BUCKET_NAME}\`"
+            echo "- Temporary preview: ${PREVIEW_URL}"
+            echo "- Resources are removed by the cleanup step after the report is uploaded."
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Remove isolated preview resources
+        if: always() && steps.cloudflare-auth.outputs.ready == 'true'
+        shell: bash
+        run: |
+          set +e
+
+          if [[ -n "${MOJIE_D1_NAME:-}" && -n "${CLOUDFLARE_DOCX_BUCKET_NAME:-}" ]]; then
+            docx_json="$(npx wrangler d1 execute "$MOJIE_D1_NAME" --remote --json --command "SELECT object_key,edited_hash FROM docx_assets" 2>/dev/null)"
+            DOCX_JSON="$docx_json" node --input-type=module <<'NODE' > /tmp/mojie-docx-objects.txt
+          const input = process.env.DOCX_JSON || '[]';
+          let value;
+          try { value = JSON.parse(input); } catch { value = []; }
+          const rows = [];
+          const visit = (item) => {
+            if (!item || typeof item !== 'object') return;
+            if (typeof item.object_key === 'string') {
+              rows.push(item.object_key);
+              if (item.edited_hash) rows.push(`${item.object_key}.edited`);
+            }
+            for (const child of Object.values(item)) visit(child);
+          };
+          visit(value);
+          process.stdout.write([...new Set(rows)].join('\n'));
+          NODE
+            while IFS= read -r object_key; do
+              [[ -z "$object_key" ]] && continue
+              npx wrangler r2 object delete "${CLOUDFLARE_DOCX_BUCKET_NAME}/${object_key}" --remote --force || true
+            done < /tmp/mojie-docx-objects.txt
+          fi
+
+          if [[ -n "${MOJIE_D1_NAME:-}" && -n "${CLOUDFLARE_BACKUP_BUCKET_NAME:-}" ]]; then
+            backup_json="$(npx wrangler d1 execute "$MOJIE_D1_NAME" --remote --json --command "SELECT object_key FROM backup_objects WHERE deleted_at IS NULL" 2>/dev/null)"
+            BACKUP_JSON="$backup_json" node --input-type=module <<'NODE' > /tmp/mojie-backup-objects.txt
+          const input = process.env.BACKUP_JSON || '[]';
+          let value;
+          try { value = JSON.parse(input); } catch { value = []; }
+          const rows = [];
+          const visit = (item) => {
+            if (!item || typeof item !== 'object') return;
+            if (typeof item.object_key === 'string') rows.push(item.object_key);
+            for (const child of Object.values(item)) visit(child);
+          };
+          visit(value);
+          process.stdout.write([...new Set(rows)].join('\n'));
+          NODE
+            while IFS= read -r object_key; do
+              [[ -z "$object_key" ]] && continue
+              npx wrangler r2 object delete "${CLOUDFLARE_BACKUP_BUCKET_NAME}/${object_key}" --remote --force || true
+            done < /tmp/mojie-backup-objects.txt
+          fi
+
+          if [[ -n "${CLOUDFLARE_WORKER_NAME:-}" ]]; then
+            curl --silent --show-error --request DELETE \
+              --header "Authorization: Bearer ${CLOUDFLARE_API_TOKEN}" \
+              "https://api.cloudflare.com/client/v4/accounts/${CLOUDFLARE_ACCOUNT_ID}/workers/scripts/${CLOUDFLARE_WORKER_NAME}" || true
+          fi
+          [[ -n "${CLOUDFLARE_DOCX_BUCKET_NAME:-}" ]] && npx wrangler r2 bucket delete "$CLOUDFLARE_DOCX_BUCKET_NAME" || true
+          [[ -n "${CLOUDFLARE_BACKUP_BUCKET_NAME:-}" ]] && npx wrangler r2 bucket delete "$CLOUDFLARE_BACKUP_BUCKET_NAME" || true
+          [[ -n "${MOJIE_D1_NAME:-}" ]] && npx wrangler d1 delete "$MOJIE_D1_NAME" --skip-confirmation || true
