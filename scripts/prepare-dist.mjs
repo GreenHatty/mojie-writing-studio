@@ -6,6 +6,7 @@ if (!existsSync('dist/server/index.js')) {
 
 renameSync('dist/server/index.js', 'dist/server/vinext-handler.js');
 copyFileSync('scripts/cloudflare-fetch-entry.mjs', 'dist/server/index.js');
+copyFileSync('scripts/mojie-auth-api.mjs', 'dist/server/mojie-auth-api.mjs');
 copyFileSync('scripts/mojie-api.mjs', 'dist/server/mojie-api.mjs');
 copyFileSync('scripts/mojie-extended-api.mjs', 'dist/server/mojie-extended-api.mjs');
 copyFileSync('scripts/mojie-privacy-guard.mjs', 'dist/server/mojie-privacy-guard.mjs');
