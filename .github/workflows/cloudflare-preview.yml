@@ -142,18 +142,37 @@ jobs:
           set -euo pipefail
           exec > >(tee cloudflare-deploy.log) 2>&1
 
+          subdomain_json="$(curl --silent --show-error \
+            --header "Authorization: Bearer ${CLOUDFLARE_API_TOKEN}" \
+            "https://api.cloudflare.com/client/v4/accounts/${CLOUDFLARE_ACCOUNT_ID}/workers/subdomain")"
+          workers_subdomain="$(SUBDOMAIN_JSON="$subdomain_json" node --input-type=module -e '
+            let value = {};
+            try { value = JSON.parse(process.env.SUBDOMAIN_JSON || "{}"); } catch {}
+            process.stdout.write(value.result?.subdomain || "");
+          ')"
+
+          if [[ -z "$workers_subdomain" ]]; then
+            account_hash="$(printf '%s' "$CLOUDFLARE_ACCOUNT_ID" | sha256sum | cut -c1-10)"
+            candidate="mojie-${account_hash}"
+            registration_json="$(curl --fail --silent --show-error --request PUT \
+              --header "Authorization: Bearer ${CLOUDFLARE_API_TOKEN}" \
+              --header "Content-Type: application/json" \
+              --data "{\"subdomain\":\"${candidate}\"}" \
+              "https://api.cloudflare.com/client/v4/accounts/${CLOUDFLARE_ACCOUNT_ID}/workers/subdomain")"
+            workers_subdomain="$(SUBDOMAIN_JSON="$registration_json" node --input-type=module -e '
+              const value = JSON.parse(process.env.SUBDOMAIN_JSON || "{}");
+              if (!value.success || !value.result?.subdomain) throw new Error(`workers.dev subdomain registration failed: ${JSON.stringify(value.errors || [])}`);
+              process.stdout.write(value.result.subdomain);
+            ')"
+            echo "Registered workers.dev subdomain: $workers_subdomain"
+          else
+            echo "Using existing workers.dev subdomain: $workers_subdomain"
+          fi
+
           npx wrangler deploy --config dist/wrangler.json
           printf '%s' "$MOJIE_ADMIN_TOKEN" | npx wrangler secret put MOJIE_ADMIN_TOKEN --config dist/wrangler.json
           printf '%s' "$MOJIE_BACKUP_MASTER_KEY" | npx wrangler secret put MOJIE_BACKUP_MASTER_KEY --config dist/wrangler.json
 
-          subdomain_json="$(curl --fail --silent --show-error \
-            --header "Authorization: Bearer ${CLOUDFLARE_API_TOKEN}" \
-            "https://api.cloudflare.com/client/v4/accounts/${CLOUDFLARE_ACCOUNT_ID}/workers/subdomain")"
-          workers_subdomain="$(SUBDOMAIN_JSON="$subdomain_json" node --input-type=module -e '
-            const value = JSON.parse(process.env.SUBDOMAIN_JSON || "{}");
-            if (!value.success || !value.result?.subdomain) throw new Error("Cloudflare workers.dev subdomain is not configured");
-            process.stdout.write(value.result.subdomain);
-          ')"
           preview_url="https://${CLOUDFLARE_WORKER_NAME}.${workers_subdomain}.workers.dev"
           echo "deployment-url=$preview_url" >> "$GITHUB_OUTPUT"
           echo "Preview URL: $preview_url"
