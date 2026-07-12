@@ -230,7 +230,8 @@ const policy = await owner.json('/api/backups/policies', {
 runD1(`UPDATE backup_policies SET next_backup_at='1970-01-01T00:00:00.000Z' WHERE id='${safeSql(policy.policyId)}'`);
 const backupCreated = await owner.json('/api/backups/run', { method: 'POST', json: {} });
 assert(backupCreated.created >= 1 && backupCreated.failures.length === 0, `R2 备份创建失败：${JSON.stringify(backupCreated.failures)}`);
-runD1(`UPDATE backup_policies SET enabled=0 WHERE id='${safeSql(policy.policyId)}'; UPDATE backup_objects SET expires_at='1970-01-01T00:00:00.000Z' WHERE policy_id='${safeSql(policy.policyId)}' AND deleted_at IS NULL`);
+runD1(`UPDATE backup_policies SET enabled=0 WHERE id='${safeSql(policy.policyId)}'`);
+runD1(`UPDATE backup_objects SET expires_at='1970-01-01T00:00:00.000Z' WHERE policy_id='${safeSql(policy.policyId)}' AND deleted_at IS NULL`);
 const backupDeleted = await owner.json('/api/backups/run', { method: 'POST', json: {} });
 assert(backupDeleted.deleted >= 1, '过期 R2 临时备份未自动删除。');
 passed('R2 定时备份创建与到期删除');
