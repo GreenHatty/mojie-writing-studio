@@ -26,6 +26,8 @@ export function PrivateApp() {
   const [csrf, setCsrf] = useState('');
   const [account, setAccount] = useState('');
   const [password, setPassword] = useState('');
+  const [authMode, setAuthMode] = useState<'login' | 'initialize'>('login');
+  const [initializationKey, setInitializationKey] = useState('');
   const [message, setMessage] = useState('');
 
   async function loadWorks() {
@@ -71,6 +73,13 @@ export function PrivateApp() {
     await loadWorks();
   }
 
+  async function initializeOwner(event: FormEvent) {
+    event.preventDefault(); setMessage('');
+    const response = await fetch('/api/auth/initialize', { method: 'POST', credentials: 'same-origin', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ key: initializationKey, account, password }) });
+    if (!response.ok) { setMessage('初始化失败，请检查初始化密钥或确认站点是否已经初始化'); return; }
+    setInitializationKey(''); setPassword(''); setAuthMode('login'); setMessage('Owner 初始化完成，请使用新账号登录');
+  }
+
   async function createWork(kind: WorkSummary['kind']) {
     const title = window.prompt('作品名称');
     if (!title?.trim()) return;
@@ -103,11 +112,12 @@ export function PrivateApp() {
   if (state === 'loading') return <main className="app-loading">正在验证私人空间…</main>;
   if (state === 'error') return <main className="empty-workspace"><h1>运行环境尚未配置</h1><p className="empty-copy">请配置 D1、R2 和受保护密钥后重试。</p></main>;
   if (state === 'anonymous') return <main className="empty-workspace">
-    <span className="brand-mark">墨</span><h1>登录墨界</h1><p className="empty-copy">作品默认私人，仅授权账号可以访问。</p>
-    <form className="create-work-form" onSubmit={(event) => void login(event)}>
+    <span className="brand-mark">墨</span><h1>{authMode === 'login' ? '登录墨界' : '初始化 Owner'}</h1><p className="empty-copy">{authMode === 'login' ? '作品默认私人，仅授权账号可以访问。' : '此入口仅首次部署可用，成功后会由服务端永久关闭。'}</p>
+    <form className="create-work-form" onSubmit={(event) => void (authMode === 'login' ? login(event) : initializeOwner(event))}>
+      {authMode === 'initialize' ? <label><span>初始化密钥</span><input aria-label="初始化密钥" autoComplete="off" type="password" value={initializationKey} onChange={(event) => setInitializationKey(event.target.value)} /></label> : null}
       <label><span>账号</span><input aria-label="账号" autoComplete="username" value={account} onChange={(event) => setAccount(event.target.value)} /></label>
       <label><span>密码</span><input aria-label="密码" autoComplete="current-password" type="password" value={password} onChange={(event) => setPassword(event.target.value)} /></label>
-      {message ? <p role="alert">{message}</p> : null}<button type="submit">登录</button>
+      {message ? <p role="alert">{message}</p> : null}<button type="submit">{authMode === 'login' ? '登录' : '完成初始化'}</button><button type="button" className="secondary-action" onClick={() => { setMessage(''); setAuthMode((mode) => mode === 'login' ? 'initialize' : 'login'); }}>{authMode === 'login' ? '首次部署：初始化 Owner' : '返回登录'}</button>
     </form>
   </main>;
   if (activeChapterId && draftDek && userId) return <ServerEditor chapterId={activeChapterId} csrf={csrf} userId={userId} draftDek={draftDek} onBack={() => setActiveChapterId(null)} />;

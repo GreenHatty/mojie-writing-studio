@@ -39,6 +39,7 @@ button:disabled { cursor: not-allowed; opacity: 0.65; }
 .work-card-open { width: 100%; border: 0; background: transparent; padding: 0; color: inherit; text-align: left; cursor: pointer; }
 .work-card > div { display: flex; gap: .6rem; margin-top: 1rem; }
 .danger-link { border: 0; background: transparent; padding: .45rem 0; color: #a1493f; cursor: pointer; }
+.secondary-action { border: 0 !important; background: transparent !important; color: var(--muted) !important; box-shadow: none !important; }
 .dashboard-empty { margin-top: 40px; text-align: center; }
 
 .sr-only { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0, 0, 0, 0); white-space: nowrap; }

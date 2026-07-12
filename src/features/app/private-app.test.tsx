@@ -12,6 +12,17 @@ describe('PrivateApp', () => {
     expect(await screen.findByRole('heading', { name: '登录墨界' })).toBeTruthy();
   });
 
+  it('exposes the one-time Owner initialization form without weakening login', async () => {
+    const fetchMock = vi.fn()
+      .mockResolvedValueOnce(new Response(JSON.stringify({ error: 'UNAUTHENTICATED' }), { status: 401 }))
+      .mockResolvedValueOnce(Response.json({ user: { id: 'owner' } }, { status: 201 }));
+    vi.stubGlobal('fetch', fetchMock); render(<PrivateApp />);
+    fireEvent.click(await screen.findByRole('button', { name: '首次部署：初始化 Owner' }));
+    fireEvent.change(screen.getByLabelText('初始化密钥'), { target: { value: 'key' } }); fireEvent.change(screen.getByLabelText('账号'), { target: { value: 'owner' } }); fireEvent.change(screen.getByLabelText('密码'), { target: { value: 'strong-password' } }); fireEvent.click(screen.getByRole('button', { name: '完成初始化' }));
+    expect(await screen.findByText('Owner 初始化完成，请使用新账号登录')).toBeTruthy();
+    expect(fetchMock.mock.calls[1][0]).toBe('/api/auth/initialize');
+  });
+
   it('loads visible works and opens their first server chapter', async () => {
     const fetchMock = vi.fn()
       .mockResolvedValueOnce(new Response(JSON.stringify({ userId: 'writer-1' }), { status: 200 }))
