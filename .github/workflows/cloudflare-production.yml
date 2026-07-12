@@ -87,6 +87,8 @@ jobs:
           node --check scripts/mojie-api.mjs
           node --check scripts/mojie-extended-api.mjs
           node --check scripts/mojie-privacy-guard.mjs
+          node --check scripts/test-privacy-guard.mjs
+          node scripts/test-privacy-guard.mjs
           npm test
           npm run typecheck
           npm run build
