@@ -28,13 +28,15 @@
 
 预览密钥不会写入仓库，也不会成为长期生产密钥。如果没有 Cloudflare 授权，工作流只记录“未执行”，不会伪装成已部署。
 
+最近一次真实 D1 隔离预览已完成资源创建、两份迁移、Worker 部署、14项跨账号检查、报告上传和资源清理，全部返回 `success`。
+
 ### `.github/workflows/cloudflare-production.yml`
 
 只允许手动运行，并使用 GitHub `production` Environment。输入确认词 `DEPLOY_MOJIE` 后会：
 
 1. 创建或复用稳定名称的 D1；
 2. 应用全部未执行迁移；
-3. 运行隐私边界测试、单元测试、TypeScript、生产构建和 Worker 入口验证；
+3. 运行独立认证模块、隐私边界测试、单元测试、TypeScript、生产构建和 Worker 入口验证；
 4. 部署 Worker；
 5. 将 `MOJIE_ADMIN_TOKEN` 与 `MOJIE_BACKUP_MASTER_KEY` 写成 Cloudflare Worker Secret；
 6. 检查 D1 绑定状态；
@@ -85,7 +87,7 @@ Cloudflare API Token 只需要当前账户的：
 
 不填写时使用项目默认名称。
 
-## 当前状态判断
+## 状态判断
 
 只有满足以下条件，才能写入验证报告“D1 云端预览验收通过”：
 
@@ -96,4 +98,4 @@ Cloudflare API Token 只需要当前账户的：
 5. 临时 Worker 与 D1 清理步骤执行；
 6. `Quality` 工作流同时成功。
 
-仅工作流显示绿色，但资源步骤因未配置授权而 skipped，不代表 Cloudflare 已配置。
+当前分支已经满足上述预览条件。正式生产环境仍需单独配置长期应用密钥并人工批准部署。
