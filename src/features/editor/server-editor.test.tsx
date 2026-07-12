@@ -12,7 +12,7 @@ beforeEach(() => {
 afterEach(() => { cleanup(); vi.useRealTimers(); vi.unstubAllGlobals(); vi.clearAllMocks(); });
 
 function chapterPayload(id: string, title: string, revision = 3) { return { chapter: { id, workId: 'w', title, canonicalContent: { type: 'doc', content: [{ type: 'paragraph' }] }, plainText: '', revision } }; }
-function contextPayload() { return { context: { note: null, versions: [], conflicts: [] } }; }
+function contextPayload() { return { context: { note: null, versions: [], conflicts: [], comments: [], suggestions: [] } }; }
 
 describe('ServerEditor', () => {
   it('loads a canonical chapter and saves edits with its base revision', async () => {

@@ -15,15 +15,19 @@ export function createD1ChapterContextStore(database: D1Database): ChapterContex
   return {
     async getContext(userId, chapterId): Promise<ChapterContext | null> {
       try { await access(database, userId, chapterId); } catch (error) { if (error instanceof AppError && error.status === 404) return null; throw error; }
-      const [note, versions, conflicts] = await Promise.all([
+      const [note, versions, conflicts, comments, suggestions] = await Promise.all([
         database.prepare('SELECT body FROM chapter_notes WHERE chapter_id = ? AND author_id = ? ORDER BY updated_at DESC LIMIT 1').bind(chapterId, userId).first<{ body: string }>(),
         database.prepare('SELECT id, label, reason, source_revision, word_count, created_at FROM chapter_versions WHERE chapter_id = ? ORDER BY created_at DESC LIMIT 100').bind(chapterId).all<{ id: string; label: string | null; reason: string; source_revision: number; word_count: number; created_at: string }>(),
-        database.prepare("SELECT id, current_version_id, submitted_version_id, conflict_version_id, created_at FROM chapter_conflicts WHERE chapter_id = ? AND status = 'OPEN' ORDER BY created_at DESC").bind(chapterId).all<{ id: string; current_version_id: string; submitted_version_id: string; conflict_version_id: string; created_at: string }>()
+        database.prepare("SELECT id, current_version_id, submitted_version_id, conflict_version_id, created_at FROM chapter_conflicts WHERE chapter_id = ? AND status = 'OPEN' ORDER BY created_at DESC").bind(chapterId).all<{ id: string; current_version_id: string; submitted_version_id: string; conflict_version_id: string; created_at: string }>(),
+        database.prepare('SELECT cc.id, cc.author_id, u.account_identifier AS author_name, cc.body, cc.thread_status, cc.created_at FROM chapter_comments cc JOIN users u ON u.id = cc.author_id WHERE cc.chapter_id = ? ORDER BY cc.created_at').bind(chapterId).all<{ id: string; author_id: string; author_name: string; body: string; thread_status: string; created_at: string }>(),
+        database.prepare('SELECT cs.id, cs.author_id, u.account_identifier AS author_name, cs.status, cs.base_revision, cs.created_at FROM change_suggestions cs JOIN users u ON u.id = cs.author_id WHERE cs.chapter_id = ? ORDER BY cs.created_at DESC').bind(chapterId).all<{ id: string; author_id: string; author_name: string; status: string; base_revision: number; created_at: string }>()
       ]);
       return {
         note: note ? { body: note.body } : null,
         versions: versions.results.map((row) => ({ id: row.id, label: row.label, reason: row.reason, sourceRevision: Number(row.source_revision), wordCount: Number(row.word_count), createdAt: row.created_at })),
-        conflicts: conflicts.results.map((row) => ({ id: row.id, currentVersionId: row.current_version_id, submittedVersionId: row.submitted_version_id, conflictVersionId: row.conflict_version_id, createdAt: row.created_at }))
+        conflicts: conflicts.results.map((row) => ({ id: row.id, currentVersionId: row.current_version_id, submittedVersionId: row.submitted_version_id, conflictVersionId: row.conflict_version_id, createdAt: row.created_at })),
+        comments: comments.results.map((row) => ({ id: row.id, authorId: row.author_id, authorName: row.author_name, body: row.body, status: row.thread_status, createdAt: row.created_at })),
+        suggestions: suggestions.results.map((row) => ({ id: row.id, authorId: row.author_id, authorName: row.author_name, status: row.status, baseRevision: Number(row.base_revision), createdAt: row.created_at }))
       };
     },
     async saveNote(userId, chapterId, body): Promise<void> {

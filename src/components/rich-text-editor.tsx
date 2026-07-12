@@ -11,9 +11,10 @@ type RichTextEditorProps = {
   content: string | CanonicalContent;
   onChange: (html: string, plainText: string) => void;
   onDocumentChange?: (document: CanonicalContent, plainText: string, html: string) => void;
+  editable?: boolean;
 };
 
-export function RichTextEditor({ chapterKey, content, onChange, onDocumentChange }: RichTextEditorProps) {
+export function RichTextEditor({ chapterKey, content, onChange, onDocumentChange, editable = true }: RichTextEditorProps) {
   const currentChapterKey = useRef(chapterKey);
   const editor = useEditor({
     extensions: [
@@ -23,6 +24,7 @@ export function RichTextEditor({ chapterKey, content, onChange, onDocumentChange
       Placeholder.configure({ placeholder: '从这一行开始写。' })
     ],
     content,
+    editable,
     editorProps: {
       attributes: {
         class: 'prose-editor',
@@ -40,6 +42,8 @@ export function RichTextEditor({ chapterKey, content, onChange, onDocumentChange
     currentChapterKey.current = chapterKey;
     editor.commands.setContent(content, { emitUpdate: false });
   }, [chapterKey, content, editor]);
+
+  useEffect(() => { editor?.setEditable(editable); }, [editable, editor]);
 
   if (!editor) return <div className="editor-loading">正在准备编辑器…</div>;
 

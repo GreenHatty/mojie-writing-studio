@@ -6,7 +6,7 @@ describe('chapter context handlers', () => {
     const handlers = createChapterContextHandlers({
       async requireUserId() { return 'u'; },
       store: {
-        async getContext() { return { note: { body: '只给我看' }, versions: [{ id: 'v1', label: null, reason: 'AUTO', sourceRevision: 1, wordCount: 9, createdAt: '2026-07-12T00:00:00Z' }], conflicts: [] }; },
+        async getContext() { return { note: { body: '只给我看' }, versions: [{ id: 'v1', label: null, reason: 'AUTO', sourceRevision: 1, wordCount: 9, createdAt: '2026-07-12T00:00:00Z' }], conflicts: [], comments: [], suggestions: [] }; },
         async saveNote() {}, async restoreVersion() { return { revision: 2 }; }, async resolveConflict() { return { revision: 2 }; }
       }
     });

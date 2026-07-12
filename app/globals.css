@@ -36,6 +36,9 @@ button:disabled { cursor: not-allowed; opacity: 0.65; }
 .work-card p, .work-card small, .work-card span { display: block; color: var(--muted); }
 .work-card h2 { margin: 12px 0 28px; }
 .work-card small { margin-top: 8px; }
+.work-card-open { width: 100%; border: 0; background: transparent; padding: 0; color: inherit; text-align: left; cursor: pointer; }
+.work-card > div { display: flex; gap: .6rem; margin-top: 1rem; }
+.danger-link { border: 0; background: transparent; padding: .45rem 0; color: #a1493f; cursor: pointer; }
 .dashboard-empty { margin-top: 40px; text-align: center; }
 
 .sr-only { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0, 0, 0, 0); white-space: nowrap; }
@@ -196,7 +199,7 @@ button:disabled { cursor: not-allowed; opacity: 0.65; }
 .directory-row:hover .chapter-actions, .directory-row:focus-within .chapter-actions { display: flex; }
 .chapter-directory small { color: #8a8173; white-space: nowrap; }
 .editor-context { border-left: 1px solid rgba(70, 62, 48, .12); padding: 1rem; }
-.editor-context nav { display: grid; grid-template-columns: repeat(3, 1fr); gap: .3rem; margin-bottom: 1rem; }
+.editor-context nav { display: grid; grid-template-columns: repeat(4, 1fr); gap: .3rem; margin-bottom: 1rem; }
 .editor-context nav button { border: 0; border-bottom: 2px solid transparent; background: transparent; padding: .55rem .2rem; cursor: pointer; }
 .editor-context nav button.is-active { border-color: #7a5c32; color: #5d431f; }
 .editor-context textarea { width: 100%; min-height: 220px; resize: vertical; border: 1px solid rgba(70, 62, 48, .18); border-radius: .65rem; background: #fffdf8; padding: .8rem; line-height: 1.65; }

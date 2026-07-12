@@ -5,6 +5,8 @@ export type ChapterContext = {
   note: { body: string } | null;
   versions: Array<{ id: string; label: string | null; reason: string; sourceRevision: number; wordCount: number; createdAt: string }>;
   conflicts: Array<{ id: string; currentVersionId: string; submittedVersionId: string; conflictVersionId: string; createdAt: string }>;
+  comments: Array<{ id: string; authorId: string; authorName: string; body: string; status: string; createdAt: string }>;
+  suggestions: Array<{ id: string; authorId: string; authorName: string; status: string; baseRevision: number; createdAt: string }>;
 };
 
 export type ChapterContextStore = {
