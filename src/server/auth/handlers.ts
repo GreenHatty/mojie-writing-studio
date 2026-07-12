@@ -4,8 +4,9 @@ import { cookieNames, serializeCsrfCookie, serializeSessionCookie } from './cook
 import { readCookie, randomCsrfToken } from './http';
 import { createAuthService, type AuthRepository } from './service';
 import { createSession, requireActiveSession, revokeSession, type SessionStore } from './sessions';
+import { MemoryRateLimiter } from './rate-limit';
 
-type Dependencies = { authRepository: AuthRepository; sessionStore: SessionStore; initializationKey: string; nodeEnv: string; appOrigin: string };
+type Dependencies = { authRepository: AuthRepository; sessionStore: SessionStore; initializationKey: string; nodeEnv: string; appOrigin: string; rateLimiter?: MemoryRateLimiter };
 
 function errorResponse(error: unknown): Response {
   if (error instanceof AppError) return protectedJson({ error: error.code }, { status: error.status });
@@ -14,15 +15,20 @@ function errorResponse(error: unknown): Response {
 
 export function createAuthHandlers(dependencies: Dependencies) {
   const auth = createAuthService(dependencies.authRepository, { initializationKey: dependencies.initializationKey });
+  const limiter = dependencies.rateLimiter ?? new MemoryRateLimiter();
   const cookieEnvironment = { NODE_ENV: dependencies.nodeEnv };
+  function clientIp(request: Request): string { return request.headers.get('CF-Connecting-IP') ?? request.headers.get('X-Forwarded-For')?.split(',')[0].trim() ?? 'unknown'; }
   function assertOrigin(request: Request): void { if (request.headers.get('Origin') !== dependencies.appOrigin) throw new AppError('CSRF_REJECTED', 403); }
   return {
     async initialize(request: Request): Promise<Response> {
       try {
         assertOrigin(request);
+        const limitKey = `initialize:${clientIp(request)}`; limiter.assertAllowed(limitKey, new Date(), 3);
         const input = await request.json() as { key?: string; account?: string; password?: string };
         if (!input.key || !input.account || !input.password) throw new AppError('INVALID_INPUT', 400);
-        const user = await auth.initializeOwner({ key: input.key, account: input.account, password: input.password });
+        let user;
+        try { user = await auth.initializeOwner({ key: input.key, account: input.account, password: input.password }); }
+        catch (error) { limiter.recordFailure(limitKey, new Date(), 3); throw error; }
         return protectedJson({ user: { id: user.id, account: user.account, platformRole: user.platformRole } }, { status: 201 });
       } catch (error) { return errorResponse(error); }
     },
@@ -31,7 +37,10 @@ export function createAuthHandlers(dependencies: Dependencies) {
         assertOrigin(request);
         const input = await request.json() as { account?: string; password?: string };
         if (!input.account || !input.password) throw new AppError('INVALID_CREDENTIALS', 401);
-        const user = await auth.login({ account: input.account, password: input.password });
+        const limitKey = `login:${input.account.trim().toLowerCase()}:${clientIp(request)}`; limiter.assertAllowed(limitKey, new Date(), 5);
+        let user;
+        try { user = await auth.login({ account: input.account, password: input.password }); }
+        catch (error) { limiter.recordFailure(limitKey, new Date(), 5); throw error; }
         const session = await createSession(dependencies.sessionStore, user.id);
         const csrf = randomCsrfToken();
         const response = protectedJson({ user: { id: user.id, account: user.account, platformRole: user.platformRole }, csrf });
