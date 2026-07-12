@@ -129,9 +129,6 @@ jobs:
           secrets: |
             MOJIE_ADMIN_TOKEN
             MOJIE_BACKUP_MASTER_KEY
-        env:
-          MOJIE_ADMIN_TOKEN: ${{ env.MOJIE_ADMIN_TOKEN }}
-          MOJIE_BACKUP_MASTER_KEY: ${{ env.MOJIE_BACKUP_MASTER_KEY }}
 
       - name: Run cross-account and storage acceptance
         if: steps.cloudflare-auth.outputs.ready == 'true'
