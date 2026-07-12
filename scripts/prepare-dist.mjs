@@ -8,6 +8,7 @@ renameSync('dist/server/index.js', 'dist/server/vinext-handler.js');
 copyFileSync('scripts/cloudflare-fetch-entry.mjs', 'dist/server/index.js');
 copyFileSync('scripts/mojie-api.mjs', 'dist/server/mojie-api.mjs');
 copyFileSync('scripts/mojie-extended-api.mjs', 'dist/server/mojie-extended-api.mjs');
+copyFileSync('scripts/mojie-privacy-guard.mjs', 'dist/server/mojie-privacy-guard.mjs');
 mkdirSync('dist/.openai', { recursive: true });
 const { project_id: projectId } = JSON.parse(readFileSync('.openai/hosting.json', 'utf8'));
 if (typeof projectId !== 'string' || !projectId) {
