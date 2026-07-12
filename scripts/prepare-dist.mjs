@@ -17,7 +17,7 @@ if (typeof projectId !== 'string' || !projectId) {
 writeFileSync('dist/.openai/hosting.json', `${JSON.stringify({ project_id: projectId }, null, 2)}\n`);
 
 const wrangler = {
-  name: 'mojie-writing-studio',
+  name: process.env.CLOUDFLARE_WORKER_NAME || 'mojie-writing-studio',
   compatibility_date: '2026-07-11',
   compatibility_flags: ['nodejs_compat'],
   main: 'server/index.js',
