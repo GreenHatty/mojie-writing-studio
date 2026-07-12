@@ -1,5 +1,11 @@
 import { deleteDB, openDB, type DBSchema, type IDBPDatabase } from 'idb';
 import {
+  createProjectEntity,
+  type ProjectEntity,
+  type ProjectEntityKind,
+  type ProjectFieldValue
+} from './project-model';
+import {
   buildSnapshot,
   saveChapterRevision,
   type ChapterRecord,
@@ -73,6 +79,14 @@ export type WorkDetail = WorkRecord & {
   volumes: Array<VolumeRecord & { chapters: StoredChapter[] }>;
 };
 
+export type SaveEntityInput = {
+  id?: string;
+  kind: ProjectEntityKind;
+  title: string;
+  summary?: string;
+  fields?: Record<string, ProjectFieldValue>;
+};
+
 type WritingDatabase = DBSchema & {
   works: { key: string; value: WorkRecord; indexes: { ownerId: string } };
   volumes: { key: string; value: VolumeRecord; indexes: { workId: string } };
@@ -87,6 +101,11 @@ type WritingDatabase = DBSchema & {
   sessions: { key: string; value: WritingSession; indexes: { ownerId: string; date: string } };
   settings: { key: string; value: ProfileSettings };
   audit: { key: string; value: AuditRecord; indexes: { ownerId: string } };
+  entities: {
+    key: string;
+    value: ProjectEntity;
+    indexes: { ownerId: string; workId: string; kind: ProjectEntityKind };
+  };
 };
 
 export type WritingRepositoryOptions = {
@@ -116,6 +135,15 @@ export type WritingRepository = {
   restoreSnapshot(chapterId: string, snapshotId: string): Promise<StoredChapter>;
   saveNote(chapterId: string, body: string): Promise<ChapterNote>;
   listNotes(chapterId: string): Promise<ChapterNote[]>;
+  saveEntity(workId: string, input: SaveEntityInput): Promise<ProjectEntity>;
+  listEntities(
+    workId: string,
+    kind?: ProjectEntityKind,
+    options?: { includeDeleted?: boolean }
+  ): Promise<ProjectEntity[]>;
+  getEntity(entityId: string): Promise<ProjectEntity | null>;
+  softDeleteEntity(entityId: string): Promise<ProjectEntity>;
+  restoreEntity(entityId: string): Promise<ProjectEntity>;
   getSettings(): Promise<ProfileSettings>;
   saveSettings(settings: ProfileSettings): Promise<void>;
   getTodayWritingCount(date: string): Promise<number>;
@@ -148,7 +176,7 @@ export function createWritingRepository(options: WritingRepositoryOptions): Writ
   const databaseName = options.databaseName ?? 'mojie-writing-studio';
   const now = options.now ?? (() => new Date().toISOString());
   const ownerId = options.ownerId;
-  const database = openDB<WritingDatabase>(databaseName, 3, {
+  const database = openDB<WritingDatabase>(databaseName, 4, {
     upgrade(db) {
       if (!db.objectStoreNames.contains('works')) {
         const works = db.createObjectStore('works', { keyPath: 'id' });
@@ -182,6 +210,12 @@ export function createWritingRepository(options: WritingRepositoryOptions): Writ
         const audit = db.createObjectStore('audit', { keyPath: 'id' });
         audit.createIndex('ownerId', 'ownerId');
       }
+      if (!db.objectStoreNames.contains('entities')) {
+        const entities = db.createObjectStore('entities', { keyPath: 'id' });
+        entities.createIndex('ownerId', 'ownerId');
+        entities.createIndex('workId', 'workId');
+        entities.createIndex('kind', 'kind');
+      }
     }
   });
 
@@ -197,6 +231,11 @@ export function createWritingRepository(options: WritingRepositoryOptions): Writ
   async function getOwnedChapter(chapterId: string): Promise<StoredChapter | null> {
     const chapter = await (await db()).get('chapters', chapterId);
     return chapter?.ownerId === ownerId ? chapter : null;
+  }
+
+  async function getOwnedEntity(entityId: string): Promise<ProjectEntity | null> {
+    const entity = await (await db()).get('entities', entityId);
+    return entity?.ownerId === ownerId ? entity : null;
   }
 
   async function audit(action: string, targetId: string, createdAt = now()): Promise<void> {
@@ -438,6 +477,73 @@ export function createWritingRepository(options: WritingRepositoryOptions): Writ
       return (await (await db()).getAllFromIndex('notes', 'chapterId', chapterId)).sort((left, right) =>
         right.updatedAt.localeCompare(left.updatedAt)
       );
+    },
+
+    async saveEntity(workId, input) {
+      const work = await getOwnedWork(workId);
+      if (!work) throw new Error('作品不存在或无访问权限');
+      const savedAt = now();
+      const existing = input.id ? await getOwnedEntity(input.id) : null;
+      if (input.id && !existing) throw new Error('设定不存在或无访问权限');
+      if (existing && existing.workId !== workId) throw new Error('设定不属于当前作品');
+      if (existing && existing.kind !== input.kind) throw new Error('不能修改设定类型');
+
+      const entity: ProjectEntity = existing
+        ? {
+            ...existing,
+            title: normalizeTitle(input.title, existing.title),
+            summary: input.summary?.trim() ?? existing.summary,
+            fields: input.fields ? { ...input.fields } : existing.fields,
+            updatedAt: savedAt
+          }
+        : createProjectEntity({
+            id: makeId(input.kind),
+            ownerId,
+            workId,
+            kind: input.kind,
+            title: input.title,
+            summary: input.summary,
+            fields: input.fields,
+            now: savedAt
+          });
+      await (await db()).put('entities', entity);
+      await audit(existing ? 'entity.updated' : 'entity.created', entity.id, savedAt);
+      return entity;
+    },
+
+    async listEntities(workId, kind, listOptions) {
+      const work = await getOwnedWork(workId);
+      if (!work) return [];
+      const records = await (await db()).getAllFromIndex('entities', 'workId', workId);
+      return records
+        .filter((entity) => entity.ownerId === ownerId)
+        .filter((entity) => !kind || entity.kind === kind)
+        .filter((entity) => listOptions?.includeDeleted || !entity.deletedAt)
+        .sort((left, right) => right.updatedAt.localeCompare(left.updatedAt));
+    },
+
+    async getEntity(entityId) {
+      return getOwnedEntity(entityId);
+    },
+
+    async softDeleteEntity(entityId) {
+      const entity = await getOwnedEntity(entityId);
+      if (!entity) throw new Error('设定不存在或无访问权限');
+      const deletedAt = now();
+      const deleted = { ...entity, deletedAt, updatedAt: deletedAt };
+      await (await db()).put('entities', deleted);
+      await audit('entity.deleted', entity.id, deletedAt);
+      return deleted;
+    },
+
+    async restoreEntity(entityId) {
+      const entity = await getOwnedEntity(entityId);
+      if (!entity) throw new Error('设定不存在或无访问权限');
+      const { deletedAt: _deletedAt, ...remaining } = entity;
+      const restored: ProjectEntity = { ...remaining, updatedAt: now() };
+      await (await db()).put('entities', restored);
+      await audit('entity.restored', entity.id, restored.updatedAt);
+      return restored;
     },
 
     async getSettings() {

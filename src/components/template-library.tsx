@@ -1,0 +1,103 @@
+'use client';
+
+import { useMemo, useState } from 'react';
+import {
+  WRITING_TEMPLATES,
+  filterTemplates,
+  type TemplateAudience,
+  type TemplateLength,
+  type TemplatePlatform
+} from '../lib/templates';
+
+const ALL = '全部';
+
+export function TemplateLibrary() {
+  const [platform, setPlatform] = useState<TemplatePlatform | typeof ALL>(ALL);
+  const [audience, setAudience] = useState<TemplateAudience | typeof ALL>(ALL);
+  const [length, setLength] = useState<TemplateLength | typeof ALL>(ALL);
+  const [query, setQuery] = useState('');
+  const [expandedId, setExpandedId] = useState<string | null>(null);
+
+  const templates = useMemo(
+    () =>
+      filterTemplates(WRITING_TEMPLATES, {
+        platform: platform === ALL ? undefined : platform,
+        audience: audience === ALL ? undefined : audience,
+        length: length === ALL ? undefined : length,
+        query
+      }),
+    [platform, audience, length, query]
+  );
+
+  return (
+    <section className="template-library">
+      <div className="template-filters">
+        <label>
+          <span>搜索</span>
+          <input onChange={(event) => setQuery(event.target.value)} placeholder="题材、元素或标签" value={query} />
+        </label>
+        <label>
+          <span>平台</span>
+          <select onChange={(event) => setPlatform(event.target.value as TemplatePlatform | typeof ALL)} value={platform}>
+            <option>{ALL}</option>
+            <option>起点</option>
+            <option>番茄</option>
+            <option>通用</option>
+          </select>
+        </label>
+        <label>
+          <span>读者</span>
+          <select onChange={(event) => setAudience(event.target.value as TemplateAudience | typeof ALL)} value={audience}>
+            <option>{ALL}</option>
+            <option>男频</option>
+            <option>女频</option>
+            <option>不限</option>
+          </select>
+        </label>
+        <label>
+          <span>篇幅</span>
+          <select onChange={(event) => setLength(event.target.value as TemplateLength | typeof ALL)} value={length}>
+            <option>{ALL}</option>
+            <option>长篇</option>
+            <option>中短篇</option>
+            <option>短故事</option>
+          </select>
+        </label>
+      </div>
+      <p className="template-count">共 {templates.length} 份原创结构模板。模板只提供方法，不生成对具体作品的仿写。</p>
+      <div className="template-list">
+        {templates.map((template) => {
+          const expanded = expandedId === template.id;
+          return (
+            <article className="template-card" key={template.id}>
+              <button aria-expanded={expanded} onClick={() => setExpandedId(expanded ? null : template.id)} type="button">
+                <div>
+                  <span>{template.platform} · {template.audience} · {template.length}</span>
+                  <h2>{template.genre}</h2>
+                  <p>{template.readingExpectation}</p>
+                </div>
+                <strong>{expanded ? '收起' : '查看'}</strong>
+              </button>
+              {expanded ? (
+                <div className="template-detail">
+                  <dl>
+                    <div><dt>一句话公式</dt><dd>{template.storyFormula}</dd></div>
+                    <div><dt>第一章</dt><dd>{template.firstChapter.join('；')}</dd></div>
+                    <div><dt>前三章</dt><dd>{template.firstThreeChapters.join('；')}</dd></div>
+                    <div><dt>第一卷</dt><dd>{template.firstVolume.join('；')}</dd></div>
+                    <div><dt>常见问题</dt><dd>{template.commonMistakes.join('；')}</dd></div>
+                    <div><dt>微创新</dt><dd>{template.innovationDirections.join('；')}</dd></div>
+                  </dl>
+                  <footer>
+                    <span>审核日期：{template.lastReviewedAt}</span>
+                    <span>热度状态：{template.heatStatus}</span>
+                  </footer>
+                </div>
+              ) : null}
+            </article>
+          );
+        })}
+      </div>
+    </section>
+  );
+}

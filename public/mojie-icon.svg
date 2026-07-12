@@ -1,0 +1,5 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" role="img" aria-label="墨界">
+  <rect width="512" height="512" rx="96" fill="#2f2925"/>
+  <path d="M116 106h280v44H116zm34 70h212v38H150zm-26 68h264v44H124zm34 76h196v40H158z" fill="#f4efe7" opacity=".22"/>
+  <text x="256" y="342" text-anchor="middle" font-size="250" font-family="serif" font-weight="700" fill="#f4efe7">墨</text>
+</svg>

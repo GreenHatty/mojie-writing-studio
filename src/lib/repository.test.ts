@@ -89,4 +89,26 @@ describe('WritingRepository', () => {
 
     expect(await repository.getTodayWritingCount('2026-07-10')).toBe(5);
   });
+
+  it('persists project entities and supports soft delete with restore', async () => {
+    const repository = makeRepository();
+    const created = await repository.createWork({ title: '万象录', kind: 'long' });
+    const character = await repository.saveEntity(created.work.id, {
+      kind: 'character',
+      title: '沈砚',
+      summary: '谨慎的年轻剑修',
+      fields: { age: 23, aliases: ['阿砚'] }
+    });
+
+    expect(await repository.listEntities(created.work.id, 'character')).toEqual([
+      expect.objectContaining({ id: character.id, title: '沈砚', kind: 'character' })
+    ]);
+
+    await repository.softDeleteEntity(character.id);
+    expect(await repository.listEntities(created.work.id, 'character')).toHaveLength(0);
+    expect(await repository.listEntities(created.work.id, 'character', { includeDeleted: true })).toHaveLength(1);
+
+    await repository.restoreEntity(character.id);
+    expect(await repository.listEntities(created.work.id, 'character')).toHaveLength(1);
+  });
 });

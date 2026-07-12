@@ -1,0 +1,123 @@
+.capability-notice {
+  max-width: 1180px;
+  margin: 0 auto 24px;
+  padding: 14px 18px;
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  background: var(--panel);
+  color: var(--muted);
+  font: 12px/1.7 "Microsoft YaHei", sans-serif;
+}
+.capability-notice summary { color: var(--ink); cursor: pointer; font-weight: 700; }
+.capability-notice ul { margin: 10px 0 0; padding-left: 20px; }
+.publication-workflow { margin-top: 22px; padding-top: 20px; border-top: 1px solid var(--line); }
+.publication-workflow > label, .publication-controls label, .publication-preview label {
+  display: grid;
+  gap: 6px;
+  color: var(--muted);
+  font: 11px "Microsoft YaHei", sans-serif;
+}
+.publication-workflow select, .publication-controls select, .publication-controls input,
+.publication-preview textarea {
+  width: 100%;
+  min-height: 38px;
+  padding: 8px 9px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  color: var(--ink);
+  background: var(--paper);
+}
+.publication-panel { margin-top: 16px; }
+.publication-controls { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+.publication-summary { display: flex; justify-content: space-between; gap: 10px; margin-top: 16px; }
+.publication-summary span { color: var(--muted); font: 11px "Microsoft YaHei", sans-serif; }
+.publication-disclaimer { color: var(--muted); font: 10px/1.6 "Microsoft YaHei", sans-serif; }
+.publication-issues { margin: 12px 0; padding: 10px 12px; border-left: 3px solid #a67a35; border-radius: 8px; background: color-mix(in srgb, var(--paper) 72%, transparent); }
+.publication-issues.is-blocking { border-left-color: #b34b40; }
+.publication-issues h3 { margin: 0 0 6px; font-size: 12px; }
+.publication-issues ul { margin: 0; padding-left: 18px; color: var(--muted); font: 11px/1.6 "Microsoft YaHei", sans-serif; }
+.publication-preview { display: grid; gap: 9px; }
+.publication-preview textarea { min-height: 58px; resize: vertical; line-height: 1.6; }
+.publication-preview label:last-child textarea { min-height: 220px; }
+.publication-actions { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 12px; }
+.publication-actions button, .publication-actions a, .publication-actions > span {
+  display: inline-flex;
+  min-height: 34px;
+  align-items: center;
+  padding: 0 11px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  color: var(--accent);
+  background: transparent;
+  font: 600 11px "Microsoft YaHei", sans-serif;
+  text-decoration: none;
+}
+.publication-actions > span { color: var(--muted); }
+.publication-status { min-height: 18px; color: var(--muted); font: 11px/1.5 "Microsoft YaHei", sans-serif; }
+
+.repetition-panel, .quick-phrases, .calculator-panel, .focus-sprint {
+  margin-top: 24px;
+  padding-top: 20px;
+  border-top: 1px solid var(--line);
+}
+.repetition-panel ul, .quick-phrases ul { display: grid; gap: 7px; padding: 0; list-style: none; }
+.repetition-panel li { display: flex; justify-content: space-between; gap: 8px; padding: 8px 10px; border: 1px solid var(--line); border-radius: 8px; }
+.repetition-panel strong { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 12px; }
+.repetition-panel span, .repetition-panel p, .focus-sprint > p { color: var(--muted); font: 10px/1.6 "Microsoft YaHei", sans-serif; }
+.phrase-form { display: grid; gap: 7px; margin-top: 12px; }
+.phrase-form input, .phrase-form textarea, .calculator-panel input, .calculator-panel select,
+.sprint-inputs input {
+  width: 100%;
+  min-height: 36px;
+  padding: 7px 9px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  color: var(--ink);
+  background: var(--paper);
+}
+.phrase-form textarea { min-height: 72px; resize: vertical; }
+.phrase-form button, .calculator-footer button, .sprint-inputs > button {
+  min-height: 34px;
+  border: 0;
+  border-radius: 8px;
+  color: white;
+  background: var(--accent);
+  font: 600 11px "Microsoft YaHei", sans-serif;
+}
+.quick-phrases li { display: grid; grid-template-columns: minmax(0, 1fr) auto; border: 1px solid var(--line); border-radius: 8px; overflow: hidden; }
+.quick-phrases li button { border: 0; color: var(--ink); background: transparent; }
+.quick-phrases li button:first-child { display: grid; grid-template-columns: 72px minmax(0, 1fr); gap: 8px; padding: 9px; text-align: left; }
+.quick-phrases li button:last-child { padding: 0 10px; color: var(--muted); }
+.quick-phrases li strong { color: var(--accent); font: 600 11px "Microsoft YaHei", sans-serif; }
+.quick-phrases li span { overflow: hidden; color: var(--muted); text-overflow: ellipsis; white-space: nowrap; font: 11px "Microsoft YaHei", sans-serif; }
+.calculator-panel { display: grid; gap: 10px; }
+.calculator-panel label, .sprint-inputs label { display: grid; gap: 5px; color: var(--muted); font: 11px "Microsoft YaHei", sans-serif; }
+.calculator-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+.calculator-footer { display: grid; grid-template-columns: auto minmax(0, 1fr); align-items: center; gap: 10px; }
+.calculator-footer button { padding: 0 13px; }
+.calculator-footer output { min-height: 34px; padding: 8px 10px; border: 1px solid var(--line); border-radius: 8px; color: var(--ink); background: var(--paper); font: 11px/1.5 "Microsoft YaHei", sans-serif; }
+.sprint-inputs { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-top: 12px; }
+.sprint-inputs > button { grid-column: 1 / -1; }
+.sprint-progress { display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: center; gap: 8px; margin-top: 14px; }
+.sprint-progress progress { width: 100%; accent-color: var(--accent); }
+.sprint-progress span { color: var(--accent); font: 600 11px "Microsoft YaHei", sans-serif; }
+
+.import-panel, .export-section { display: grid; gap: 12px; }
+.export-section { margin-top: 24px; padding-top: 20px; border-top: 1px solid var(--line); }
+.import-panel > p, .export-section > p { margin: 0; color: var(--muted); font: 11px/1.65 "Microsoft YaHei", sans-serif; }
+.file-picker { display: grid; gap: 7px; padding: 14px; border: 1px dashed var(--line); border-radius: 10px; color: var(--muted); font: 11px "Microsoft YaHei", sans-serif; background: color-mix(in srgb, var(--paper) 70%, transparent); }
+.file-picker input { width: 100%; font-size: 11px; }
+.import-preview { display: grid; gap: 8px; padding: 12px; border: 1px solid var(--line); border-radius: 10px; background: var(--paper); }
+.import-preview > strong { font-size: 13px; }
+.import-preview > span, .import-preview > p { color: var(--muted); font: 10px/1.5 "Microsoft YaHei", sans-serif; }
+.import-preview ol { max-height: 190px; overflow: auto; margin: 0; padding-left: 22px; font: 11px/1.65 "Microsoft YaHei", sans-serif; }
+.import-preview > div, .import-status { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+.import-preview button, .import-status button { min-height: 32px; padding: 0 10px; border: 1px solid var(--line); border-radius: 8px; color: var(--accent); background: transparent; font: 600 11px "Microsoft YaHei", sans-serif; }
+.import-preview button:last-child { color: white; border-color: var(--accent); background: var(--accent); }
+.import-status { min-height: 22px; color: var(--muted); font: 11px/1.5 "Microsoft YaHei", sans-serif; }
+
+@media (max-width: 520px) {
+  .publication-controls, .calculator-grid, .sprint-inputs { grid-template-columns: 1fr; }
+  .sprint-inputs > button { grid-column: auto; }
+  .import-preview > div, .import-status { align-items: stretch; flex-direction: column; }
+}

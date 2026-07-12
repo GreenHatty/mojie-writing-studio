@@ -1,0 +1,319 @@
+'use client';
+
+import { useEffect, useMemo, useState } from 'react';
+import { buildMapSvg, layoutRelationshipGraph, type GraphEdge, type GraphNode } from '../lib/graph-model';
+import { detectTimelineConflicts, type ProjectEntity, type TimelineEvent } from '../lib/project-model';
+import type { WritingRepository } from '../lib/repository';
+
+type VisualSettingsPanelProps = {
+  repository: WritingRepository;
+  workId: string;
+};
+
+type VisualMode = 'timeline' | 'relationships' | 'map';
+
+function fieldString(entity: ProjectEntity, key: string): string {
+  const value = entity.fields[key];
+  return typeof value === 'string' ? value : '';
+}
+
+function fieldNumber(entity: ProjectEntity, key: string, fallback: number): number {
+  const value = entity.fields[key];
+  return typeof value === 'number' && Number.isFinite(value) ? value : fallback;
+}
+
+function fieldStrings(entity: ProjectEntity, key: string): string[] {
+  const value = entity.fields[key];
+  return Array.isArray(value) ? value.filter((item): item is string => typeof item === 'string') : [];
+}
+
+function downloadSvg(svg: string, fileName: string): void {
+  const blob = new Blob([svg], { type: 'image/svg+xml;charset=utf-8' });
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement('a');
+  link.href = url;
+  link.download = fileName;
+  link.click();
+  window.setTimeout(() => URL.revokeObjectURL(url), 0);
+}
+
+export function VisualSettingsPanel({ repository, workId }: VisualSettingsPanelProps) {
+  const [mode, setMode] = useState<VisualMode>('timeline');
+  const [characters, setCharacters] = useState<ProjectEntity[]>([]);
+  const [factions, setFactions] = useState<ProjectEntity[]>([]);
+  const [locations, setLocations] = useState<ProjectEntity[]>([]);
+  const [events, setEvents] = useState<ProjectEntity[]>([]);
+  const [relationships, setRelationships] = useState<ProjectEntity[]>([]);
+  const [status, setStatus] = useState('');
+  const [busy, setBusy] = useState(false);
+
+  const [eventForm, setEventForm] = useState({ title: '', startAt: '', endAt: '', locationId: '', characterIds: [] as string[] });
+  const [relationForm, setRelationForm] = useState({ fromId: '', toId: '', label: '合作', strength: 3 });
+  const [locationForm, setLocationForm] = useState({ title: '', summary: '', x: 160, y: 120 });
+  const [routeForm, setRouteForm] = useState({ fromId: '', toId: '', label: '路线' });
+
+  async function refresh() {
+    const [nextCharacters, nextFactions, nextLocations, nextEvents, nextRelationships] = await Promise.all([
+      repository.listEntities(workId, 'character'),
+      repository.listEntities(workId, 'faction'),
+      repository.listEntities(workId, 'location'),
+      repository.listEntities(workId, 'timeline'),
+      repository.listEntities(workId, 'relationship')
+    ]);
+    setCharacters(nextCharacters);
+    setFactions(nextFactions);
+    setLocations(nextLocations);
+    setEvents(nextEvents);
+    setRelationships(nextRelationships);
+  }
+
+  useEffect(() => {
+    let cancelled = false;
+    void Promise.all([
+      repository.listEntities(workId, 'character'),
+      repository.listEntities(workId, 'faction'),
+      repository.listEntities(workId, 'location'),
+      repository.listEntities(workId, 'timeline'),
+      repository.listEntities(workId, 'relationship')
+    ]).then(([nextCharacters, nextFactions, nextLocations, nextEvents, nextRelationships]) => {
+      if (cancelled) return;
+      setCharacters(nextCharacters);
+      setFactions(nextFactions);
+      setLocations(nextLocations);
+      setEvents(nextEvents);
+      setRelationships(nextRelationships);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [repository, workId]);
+
+  const timelineEvents = useMemo<TimelineEvent[]>(
+    () => events.map((event) => ({
+      ...event,
+      kind: 'timeline',
+      startAt: fieldString(event, 'startAt'),
+      endAt: fieldString(event, 'endAt'),
+      characterIds: fieldStrings(event, 'characterIds'),
+      locationId: fieldString(event, 'locationId') || undefined,
+      chapterIds: fieldStrings(event, 'chapterIds'),
+      predecessorIds: fieldStrings(event, 'predecessorIds'),
+      isForeshadowing: event.fields.isForeshadowing === true
+    })),
+    [events]
+  );
+  const timelineConflicts = useMemo(() => detectTimelineConflicts(timelineEvents), [timelineEvents]);
+  const entityById = useMemo(
+    () => new Map([...characters, ...factions, ...locations].map((entity) => [entity.id, entity])),
+    [characters, factions, locations]
+  );
+
+  const relationshipNodes = useMemo<GraphNode[]>(
+    () => [...characters, ...factions].map((entity) => ({
+      id: entity.id,
+      label: entity.title,
+      kind: entity.kind === 'faction' ? 'faction' : 'character'
+    })),
+    [characters, factions]
+  );
+  const relationshipEdges = useMemo<GraphEdge[]>(
+    () => relationships
+      .filter((entity) => fieldString(entity, 'edgeKind') !== 'route')
+      .map((entity) => ({
+        id: entity.id,
+        fromId: fieldString(entity, 'fromId'),
+        toId: fieldString(entity, 'toId'),
+        label: fieldString(entity, 'relationType') || entity.title,
+        strength: fieldNumber(entity, 'strength', 3)
+      })),
+    [relationships]
+  );
+  const positionedRelationshipNodes = useMemo(
+    () => layoutRelationshipGraph(relationshipNodes, 640, 420),
+    [relationshipNodes]
+  );
+
+  const mapNodes = useMemo<GraphNode[]>(
+    () => locations.map((entity, index) => ({
+      id: entity.id,
+      label: entity.title,
+      kind: 'location',
+      x: fieldNumber(entity, 'x', 90 + (index % 3) * 180),
+      y: fieldNumber(entity, 'y', 90 + Math.floor(index / 3) * 120)
+    })),
+    [locations]
+  );
+  const mapEdges = useMemo<GraphEdge[]>(
+    () => relationships
+      .filter((entity) => fieldString(entity, 'edgeKind') === 'route')
+      .map((entity) => ({
+        id: entity.id,
+        fromId: fieldString(entity, 'fromId'),
+        toId: fieldString(entity, 'toId'),
+        label: fieldString(entity, 'relationType') || entity.title
+      })),
+    [relationships]
+  );
+  const mapSvg = useMemo(() => buildMapSvg(mapNodes, mapEdges, { width: 640, height: 420, title: '作品地图' }), [mapEdges, mapNodes]);
+
+  async function run(action: () => Promise<void>) {
+    setBusy(true);
+    setStatus('');
+    try {
+      await action();
+      await refresh();
+    } catch (error) {
+      setStatus(error instanceof Error ? error.message : '操作失败。');
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function addEvent() {
+    if (!eventForm.title.trim() || !eventForm.startAt || !eventForm.endAt) {
+      setStatus('事件名称、开始时间和结束时间不能为空。');
+      return;
+    }
+    await run(async () => {
+      await repository.saveEntity(workId, {
+        kind: 'timeline',
+        title: eventForm.title,
+        fields: {
+          startAt: new Date(eventForm.startAt).toISOString(),
+          endAt: new Date(eventForm.endAt).toISOString(),
+          locationId: eventForm.locationId || null,
+          characterIds: eventForm.characterIds
+        }
+      });
+      setEventForm({ title: '', startAt: '', endAt: '', locationId: '', characterIds: [] });
+      setStatus('时间线事件已保存。');
+    });
+  }
+
+  async function addRelationship() {
+    if (!relationForm.fromId || !relationForm.toId || relationForm.fromId === relationForm.toId) {
+      setStatus('请选择两个不同的人物或势力。');
+      return;
+    }
+    await run(async () => {
+      await repository.saveEntity(workId, {
+        kind: 'relationship',
+        title: relationForm.label,
+        fields: {
+          edgeKind: 'relationship',
+          fromId: relationForm.fromId,
+          toId: relationForm.toId,
+          relationType: relationForm.label,
+          strength: relationForm.strength
+        }
+      });
+      setStatus('人物关系已保存。');
+    });
+  }
+
+  async function addLocation() {
+    if (!locationForm.title.trim()) {
+      setStatus('地点名称不能为空。');
+      return;
+    }
+    await run(async () => {
+      await repository.saveEntity(workId, {
+        kind: 'location',
+        title: locationForm.title,
+        summary: locationForm.summary,
+        fields: { x: locationForm.x, y: locationForm.y }
+      });
+      setLocationForm({ title: '', summary: '', x: 160, y: 120 });
+      setStatus('地图地点已保存。');
+    });
+  }
+
+  async function addRoute() {
+    if (!routeForm.fromId || !routeForm.toId || routeForm.fromId === routeForm.toId) {
+      setStatus('请选择两个不同地点。');
+      return;
+    }
+    await run(async () => {
+      await repository.saveEntity(workId, {
+        kind: 'relationship',
+        title: routeForm.label,
+        fields: {
+          edgeKind: 'route',
+          fromId: routeForm.fromId,
+          toId: routeForm.toId,
+          relationType: routeForm.label
+        }
+      });
+      setStatus('地图路线已保存。');
+    });
+  }
+
+  return (
+    <section className="visual-settings-panel">
+      <div className="visual-mode-tabs" role="tablist" aria-label="可视化设定">
+        <button aria-selected={mode === 'timeline'} onClick={() => setMode('timeline')} role="tab" type="button">时间线</button>
+        <button aria-selected={mode === 'relationships'} onClick={() => setMode('relationships')} role="tab" type="button">人物关系</button>
+        <button aria-selected={mode === 'map'} onClick={() => setMode('map')} role="tab" type="button">地图DIY</button>
+      </div>
+
+      {mode === 'timeline' ? (
+        <div className="timeline-tool">
+          <div className="visual-form-grid">
+            <label><span>事件名称</span><input onChange={(event) => setEventForm((form) => ({ ...form, title: event.target.value }))} value={eventForm.title} /></label>
+            <label><span>开始时间</span><input onChange={(event) => setEventForm((form) => ({ ...form, startAt: event.target.value }))} type="datetime-local" value={eventForm.startAt} /></label>
+            <label><span>结束时间</span><input onChange={(event) => setEventForm((form) => ({ ...form, endAt: event.target.value }))} type="datetime-local" value={eventForm.endAt} /></label>
+            <label><span>地点</span><select onChange={(event) => setEventForm((form) => ({ ...form, locationId: event.target.value }))} value={eventForm.locationId}><option value="">未指定</option>{locations.map((location) => <option key={location.id} value={location.id}>{location.title}</option>)}</select></label>
+            <fieldset><legend>相关人物</legend>{characters.map((character) => <label key={character.id}><input checked={eventForm.characterIds.includes(character.id)} onChange={(event) => setEventForm((form) => ({ ...form, characterIds: event.target.checked ? [...form.characterIds, character.id] : form.characterIds.filter((id) => id !== character.id) }))} type="checkbox" />{character.title}</label>)}</fieldset>
+            <button disabled={busy} onClick={() => void addEvent()} type="button">保存事件</button>
+          </div>
+          {timelineConflicts.length ? <div className="timeline-conflicts"><strong>发现 {timelineConflicts.length} 项时间冲突</strong><ul>{timelineConflicts.map((conflict, index) => <li key={`${conflict.code}-${index}`}>{conflict.message}</li>)}</ul></div> : null}
+          <ol className="timeline-list">{[...timelineEvents].sort((a, b) => a.startAt.localeCompare(b.startAt)).map((event) => <li key={event.id}><time>{event.startAt ? new Date(event.startAt).toLocaleString('zh-CN') : '时间未定'}</time><strong>{event.title}</strong><span>{event.locationId ? entityById.get(event.locationId)?.title : '地点未定'} · {event.characterIds.map((id) => entityById.get(id)?.title).filter(Boolean).join('、') || '人物未定'}</span></li>)}</ol>
+        </div>
+      ) : null}
+
+      {mode === 'relationships' ? (
+        <div className="relationship-tool">
+          <div className="visual-form-grid compact">
+            <label><span>起点人物/势力</span><select onChange={(event) => setRelationForm((form) => ({ ...form, fromId: event.target.value }))} value={relationForm.fromId}><option value="">请选择</option>{[...characters, ...factions].map((entity) => <option key={entity.id} value={entity.id}>{entity.title}</option>)}</select></label>
+            <label><span>终点人物/势力</span><select onChange={(event) => setRelationForm((form) => ({ ...form, toId: event.target.value }))} value={relationForm.toId}><option value="">请选择</option>{[...characters, ...factions].map((entity) => <option key={entity.id} value={entity.id}>{entity.title}</option>)}</select></label>
+            <label><span>关系</span><input onChange={(event) => setRelationForm((form) => ({ ...form, label: event.target.value }))} value={relationForm.label} /></label>
+            <label><span>强度 1-5</span><input max={5} min={1} onChange={(event) => setRelationForm((form) => ({ ...form, strength: Number(event.target.value) }))} type="number" value={relationForm.strength} /></label>
+            <button disabled={busy} onClick={() => void addRelationship()} type="button">保存关系</button>
+          </div>
+          <svg className="relationship-svg" viewBox="0 0 640 420" role="img" aria-label="人物关系图">
+            {relationshipEdges.map((edge) => {
+              const from = positionedRelationshipNodes.find((node) => node.id === edge.fromId);
+              const to = positionedRelationshipNodes.find((node) => node.id === edge.toId);
+              if (!from || !to) return null;
+              return <g key={edge.id}><line x1={from.x} y1={from.y} x2={to.x} y2={to.y} stroke="currentColor" strokeWidth={Math.max(1, edge.strength ?? 2)} opacity="0.45" /><text x={(from.x + to.x) / 2} y={(from.y + to.y) / 2 - 5} textAnchor="middle">{edge.label}</text></g>;
+            })}
+            {positionedRelationshipNodes.map((node) => <g key={node.id}><circle cx={node.x} cy={node.y} r={30} /><text x={node.x} y={node.y + 4} textAnchor="middle">{node.label}</text></g>)}
+          </svg>
+          <button className="visual-export" onClick={() => downloadSvg(buildMapSvg(relationshipNodes, relationshipEdges, { width: 640, height: 420, title: '人物关系图' }), '人物关系图.svg')} type="button">导出SVG</button>
+        </div>
+      ) : null}
+
+      {mode === 'map' ? (
+        <div className="map-tool">
+          <div className="visual-form-grid compact">
+            <label><span>地点名</span><input onChange={(event) => setLocationForm((form) => ({ ...form, title: event.target.value }))} value={locationForm.title} /></label>
+            <label><span>说明</span><input onChange={(event) => setLocationForm((form) => ({ ...form, summary: event.target.value }))} value={locationForm.summary} /></label>
+            <label><span>X坐标</span><input max={620} min={20} onChange={(event) => setLocationForm((form) => ({ ...form, x: Number(event.target.value) }))} type="number" value={locationForm.x} /></label>
+            <label><span>Y坐标</span><input max={400} min={20} onChange={(event) => setLocationForm((form) => ({ ...form, y: Number(event.target.value) }))} type="number" value={locationForm.y} /></label>
+            <button disabled={busy} onClick={() => void addLocation()} type="button">添加地点</button>
+          </div>
+          <div className="visual-form-grid route-form">
+            <label><span>路线起点</span><select onChange={(event) => setRouteForm((form) => ({ ...form, fromId: event.target.value }))} value={routeForm.fromId}><option value="">请选择</option>{locations.map((location) => <option key={location.id} value={location.id}>{location.title}</option>)}</select></label>
+            <label><span>路线终点</span><select onChange={(event) => setRouteForm((form) => ({ ...form, toId: event.target.value }))} value={routeForm.toId}><option value="">请选择</option>{locations.map((location) => <option key={location.id} value={location.id}>{location.title}</option>)}</select></label>
+            <label><span>路线名称</span><input onChange={(event) => setRouteForm((form) => ({ ...form, label: event.target.value }))} value={routeForm.label} /></label>
+            <button disabled={busy} onClick={() => void addRoute()} type="button">添加路线</button>
+          </div>
+          <div className="map-svg-preview" dangerouslySetInnerHTML={{ __html: mapSvg }} />
+          <button className="visual-export" onClick={() => downloadSvg(mapSvg, '作品地图.svg')} type="button">导出SVG</button>
+        </div>
+      ) : null}
+
+      <p className="visual-status" role="status">{status}</p>
+    </section>
+  );
+}
