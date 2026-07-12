@@ -2,13 +2,16 @@
 
 墨界是面向受邀中文网文作者的创作、设定、有限协作、云同步、备份和发布准备平台。网站采用“本机即时草稿 + 服务端权限与云端修订”的双层架构，作者始终保留对正文修改、修改建议和正式发布的最终控制权。
 
+当前部署模式为：**Cloudflare D1 云端正文 + 浏览器本机 DOCX 文件库 + 用户自选 WebDAV/S3 备份**。项目不启用 Cloudflare R2，也不会自动创建 R2 资源。
+
 ## 已实现
 
 ### 身份、权限与隐私
 
 - 首次站点所有者初始化；
 - 账户级邀请与作品级一次性邀请；
-- PBKDF2-SHA256 密码派生与独立盐值；
+- 带版本标识的 PBKDF2-SHA256 密码派生、100,000 次迭代与独立随机盐；
+- 登录失败执行恒定密码派生，降低账号枚举差异；
 - HttpOnly、Secure、SameSite=Strict 会话；
 - `owner / admin / writer / editor / commenter / viewer` 六级角色；
 - 所有私人内容接口都要求明确的 `work_members` 成员关系，全局管理员不会自动获得正文访问权；
@@ -57,7 +60,9 @@
 - 原格式编辑模式只替换现有正文文本节点；
 - 未编辑的图片、样式、编号、关系、页眉页脚、脚注等包部件原样保留；
 - 原格式模式要求段落数量不变，超出保证范围时拒绝导出而非虚假承诺；
-- 原件和编辑件可分别存入权限隔离的 R2 对象存储。
+- 原件和编辑件按当前账号及作品保存在浏览器 IndexedDB；
+- 支持重新载入、下载和删除本机 DOCX；
+- DOCX 不上传 Cloudflare R2，因此不会产生 R2 存储费用。
 
 ### 排行榜与发布
 
@@ -71,13 +76,14 @@
 
 ### 云同步与自动备份
 
-- 作品云端修订同步和冲突拒绝覆盖；
-- R2、WebDAV、S3兼容对象存储；
+- D1 作品云端修订同步和冲突拒绝覆盖；
+- 自动备份目标为用户自己的 WebDAV 或 S3兼容对象存储；
 - 用户自定义自动备份间隔：5分钟至30天；
 - 用户自定义临时备份保留期限：1小时至365天；
 - AES-GCM 加密保存 WebDAV/S3 凭据；
 - Cron 自动创建到期备份并删除过期对象；
-- 关闭策略后，旧临时备份仍按其原到期时间清理。
+- 关闭策略后，旧临时备份仍按其原到期时间清理；
+- 未配置第三方存储时不会伪装成已完成远程备份。
 
 ## 本地运行
 
@@ -91,6 +97,7 @@ npm run dev
 质量检查：
 
 ```bash
+node scripts/test-privacy-guard.mjs
 npm test
 npm run typecheck
 npm run build
@@ -102,13 +109,20 @@ npm run test:worker-entry
 完整部署步骤见 [`docs/cloud-deployment.md`](docs/cloud-deployment.md)，包括：
 
 - Cloudflare D1 数据库；
-- DOCX 与备份 R2 Bucket；
 - `migrations/0001_cloud.sql` 与 `migrations/0002_collaboration_admin.sql`；
 - `MOJIE_ADMIN_TOKEN` 首次初始化密钥；
 - `MOJIE_BACKUP_MASTER_KEY` 备份凭据加密密钥；
-- Worker Cron 和环境变量。
+- Worker Cron 和环境变量；
+- 可选 WebDAV 或 S3 兼容存储。
 
-没有绑定 D1 时，网站会明确显示服务端尚未配置，不会退化为伪造的多用户权限系统。数据库、存储桶和托管密钥必须由仓库所有者在部署平台创建；它们不能安全地写入代码仓库。
+没有绑定 D1 时，网站会明确显示服务端尚未配置，不会退化为伪造的多用户权限系统。D1 和托管密钥必须由仓库所有者在部署平台创建；它们不能安全地写入代码仓库。R2 不属于当前部署前置条件。
+
+## 验证状态
+
+- GitHub Actions `Quality`：脚本语法、隐私边界、单元测试、TypeScript、生产构建和 Worker 入口验证全部通过；
+- Cloudflare D1 隔离预览：临时 D1、两份迁移、Worker 部署及 14 项跨账号验收全部通过；
+- 预览结束后临时 Worker 与 D1 自动清理；
+- 验收报告见 `docs/verification-report.md`。
 
 ## 隐私与凭据
 
@@ -119,4 +133,4 @@ npm run test:worker-entry
 - Service Worker 不缓存认证 API 或私人页面；
 - 发布、批量替换、DOCX编辑和智能建议均保留人工确认或版本回退能力。
 
-本分支保持草稿 PR，不自动合并 `main`，也不在未配置生产资源时声称网站已经正式上线。
+本分支保持草稿 PR，不自动合并 `main`，也不自动进行正式生产部署。
