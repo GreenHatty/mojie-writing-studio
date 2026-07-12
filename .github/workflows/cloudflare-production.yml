@@ -1,0 +1,142 @@
+name: Cloudflare Production Provision
+
+on:
+  workflow_dispatch:
+    inputs:
+      confirmation:
+        description: Type DEPLOY_MOJIE to provision and deploy production
+        required: true
+        type: string
+
+concurrency:
+  group: cloudflare-production
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  deploy:
+    if: inputs.confirmation == 'DEPLOY_MOJIE'
+    environment: production
+    runs-on: ubuntu-latest
+    timeout-minutes: 35
+    env:
+      CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+      CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+      CLOUDFLARE_WORKER_NAME: ${{ vars.MOJIE_WORKER_NAME || 'mojie-writing-studio' }}
+      CLOUDFLARE_D1_DATABASE_NAME: ${{ vars.MOJIE_D1_DATABASE_NAME || 'mojie-writing-studio' }}
+      CLOUDFLARE_DOCX_BUCKET_NAME: ${{ vars.MOJIE_DOCX_BUCKET_NAME || 'mojie-docx' }}
+      CLOUDFLARE_BACKUP_BUCKET_NAME: ${{ vars.MOJIE_BACKUP_BUCKET_NAME || 'mojie-backups' }}
+      MOJIE_ADMIN_TOKEN: ${{ secrets.MOJIE_ADMIN_TOKEN }}
+      MOJIE_BACKUP_MASTER_KEY: ${{ secrets.MOJIE_BACKUP_MASTER_KEY }}
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Validate required secrets
+        shell: bash
+        run: |
+          set -euo pipefail
+          [[ -n "$CLOUDFLARE_ACCOUNT_ID" ]]
+          [[ -n "$CLOUDFLARE_API_TOKEN" ]]
+          [[ -n "$MOJIE_ADMIN_TOKEN" ]]
+          [[ -n "$MOJIE_BACKUP_MASTER_KEY" ]]
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci --legacy-peer-deps --loglevel=error --no-audit --no-fund
+
+      - name: Create or reuse D1 and R2
+        shell: bash
+        run: |
+          set -euo pipefail
+          d1_json="$(npx wrangler d1 list --json)"
+          d1_id="$(D1_JSON="$d1_json" D1_NAME="$CLOUDFLARE_D1_DATABASE_NAME" node --input-type=module -e '
+            const values = JSON.parse(process.env.D1_JSON || "[]");
+            const item = values.find((value) => value.name === process.env.D1_NAME);
+            if (item) process.stdout.write(String(item.uuid || item.id));
+          ')"
+          if [[ -z "$d1_id" ]]; then
+            npx wrangler d1 create "$CLOUDFLARE_D1_DATABASE_NAME" --location apac
+            d1_json="$(npx wrangler d1 list --json)"
+            d1_id="$(D1_JSON="$d1_json" D1_NAME="$CLOUDFLARE_D1_DATABASE_NAME" node --input-type=module -e '
+              const values = JSON.parse(process.env.D1_JSON || "[]");
+              const item = values.find((value) => value.name === process.env.D1_NAME);
+              if (!item) throw new Error(`D1 database not found: ${process.env.D1_NAME}`);
+              process.stdout.write(String(item.uuid || item.id));
+            ')"
+          fi
+          if ! npx wrangler r2 bucket info "$CLOUDFLARE_DOCX_BUCKET_NAME" --json >/dev/null 2>&1; then
+            npx wrangler r2 bucket create "$CLOUDFLARE_DOCX_BUCKET_NAME" --location apac
+          fi
+          if ! npx wrangler r2 bucket info "$CLOUDFLARE_BACKUP_BUCKET_NAME" --json >/dev/null 2>&1; then
+            npx wrangler r2 bucket create "$CLOUDFLARE_BACKUP_BUCKET_NAME" --location apac
+          fi
+          echo "CLOUDFLARE_D1_DATABASE_ID=$d1_id" >> "$GITHUB_ENV"
+          npx wrangler d1 migrations apply "$CLOUDFLARE_D1_DATABASE_NAME" --remote
+
+      - name: Verify and build
+        run: |
+          node --check scripts/mojie-api.mjs
+          node --check scripts/mojie-extended-api.mjs
+          node --check scripts/mojie-privacy-guard.mjs
+          npm test
+          npm run typecheck
+          npm run build
+          npm run test:worker-entry
+
+      - name: Deploy Worker and managed secrets
+        id: deploy
+        uses: cloudflare/wrangler-action@v3
+        with:
+          apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          command: deploy --config dist/wrangler.json
+          secrets: |
+            MOJIE_ADMIN_TOKEN
+            MOJIE_BACKUP_MASTER_KEY
+        env:
+          MOJIE_ADMIN_TOKEN: ${{ secrets.MOJIE_ADMIN_TOKEN }}
+          MOJIE_BACKUP_MASTER_KEY: ${{ secrets.MOJIE_BACKUP_MASTER_KEY }}
+
+      - name: Smoke check
+        env:
+          DEPLOYMENT_URL: ${{ steps.deploy.outputs.deployment-url }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          for attempt in {1..30}; do
+            if curl --fail --silent --show-error "$DEPLOYMENT_URL/api/site/public" >/tmp/mojie-public.json; then
+              break
+            fi
+            sleep 2
+          done
+          PUBLIC_JSON="$(cat /tmp/mojie-public.json)" node --input-type=module -e '
+            const value = JSON.parse(process.env.PUBLIC_JSON);
+            if (value.serverReady !== true) throw new Error("Production D1 binding is not ready");
+          '
+          status="$(curl --silent --output /dev/null --write-out '%{http_code}' "$DEPLOYMENT_URL/api/cloud/works")"
+          [[ "$status" == "401" ]]
+
+      - name: Deployment summary
+        env:
+          DEPLOYMENT_URL: ${{ steps.deploy.outputs.deployment-url }}
+        run: |
+          {
+            echo "## Mojie production provisioned"
+            echo
+            echo "- Worker: \`${CLOUDFLARE_WORKER_NAME}\`"
+            echo "- D1: \`${CLOUDFLARE_D1_DATABASE_NAME}\`"
+            echo "- DOCX R2: \`${CLOUDFLARE_DOCX_BUCKET_NAME}\`"
+            echo "- Backup R2: \`${CLOUDFLARE_BACKUP_BUCKET_NAME}\`"
+            echo "- URL: ${DEPLOYMENT_URL}"
+            echo "- Both D1 migrations were applied."
+            echo "- MOJIE_ADMIN_TOKEN and MOJIE_BACKUP_MASTER_KEY were stored as Worker secrets."
+          } >> "$GITHUB_STEP_SUMMARY"
