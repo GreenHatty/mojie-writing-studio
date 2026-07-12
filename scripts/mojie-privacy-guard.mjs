@@ -43,11 +43,11 @@ async function sessionUser(request, env) {
   const token = parseCookies(request).get(SESSION_COOKIE);
   if (!token) return null;
   const row = await env.DB.prepare(
-    `SELECT u.id,u.status,s.expires_at FROM sessions s JOIN users u ON u.id=s.user_id
+    `SELECT u.id,u.status,u.global_role,s.expires_at FROM sessions s JOIN users u ON u.id=s.user_id
      WHERE s.token_hash=? LIMIT 1`
   ).bind(await sha256Hex(token)).first();
   if (!row || row.status !== 'active' || row.expires_at <= new Date().toISOString()) return null;
-  return { id: row.id };
+  return { id: row.id, globalRole: row.global_role };
 }
 
 async function memberRole(env, userId, workId) {
@@ -63,7 +63,13 @@ function can(role, action) {
 
 function routeRequirement(pathname, method) {
   let match = pathname.match(/^\/api\/cloud\/works\/([^/]+)$/u);
-  if (match) return { workId: decodeURIComponent(match[1]), action: method === 'GET' ? 'read' : method === 'PUT' ? 'write' : null };
+  if (match) {
+    return {
+      workId: decodeURIComponent(match[1]),
+      action: method === 'GET' ? 'read' : method === 'PUT' ? 'write' : null,
+      allowCreate: method === 'PUT'
+    };
+  }
 
   match = pathname.match(/^\/api\/cloud\/works\/([^/]+)\/(members|invitations)$/u);
   if (match) return { workId: decodeURIComponent(match[1]), action: 'members' };
@@ -121,6 +127,12 @@ export async function guardMojiePrivateContent(request, env) {
 
   const user = await sessionUser(request, env);
   if (!user) return unauthenticated();
+
+  if (requirement.allowCreate) {
+    const existing = await env.DB.prepare('SELECT work_id FROM cloud_documents WHERE work_id=? LIMIT 1').bind(requirement.workId).first();
+    if (!existing) return can(user.globalRole, 'write') ? null : denied('当前账号不能创建云端作品。');
+  }
+
   const role = await memberRole(env, user.id, requirement.workId);
   if (!role || !can(role, requirement.action)) return denied();
   return null;
