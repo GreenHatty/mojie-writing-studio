@@ -12,16 +12,19 @@ if (!/scheduled\s*\(/.test(entry)) {
 for (const modulePath of ['dist/server/mojie-api.mjs', 'dist/server/mojie-extended-api.mjs', 'dist/server/mojie-privacy-guard.mjs']) {
   if (!existsSync(modulePath)) throw new Error(`Expected Worker API module at ${modulePath}.`);
 }
+
 const api = readFileSync('dist/server/mojie-api.mjs', 'utf8');
-for (const requiredRoute of ['/api/auth/login', '/api/rankings/run', '/api/backups/run']) {
-  if (!api.includes(requiredRoute)) throw new Error(`Expected API bundle to include ${requiredRoute}.`);
+for (const requiredCapability of ['authRoutes', 'rankingRoutes', 'backupRoutes', 'handleMojieScheduled']) {
+  if (!api.includes(requiredCapability)) throw new Error(`Expected core API bundle to include ${requiredCapability}.`);
 }
+
 const extendedApi = readFileSync('dist/server/mojie-extended-api.mjs', 'utf8');
-for (const requiredRoute of ['/api/site/public', '/api/admin/overview', '/api/admin/settings', '/members', '/comments', '/suggestions']) {
-  if (!extendedApi.includes(requiredRoute)) throw new Error(`Expected extended API bundle to include ${requiredRoute}.`);
+for (const requiredCapability of ['publicRoutes', 'adminRoutes', 'memberRoutes', 'collaborationRoutes', 'chapter_comments', 'chapter_suggestions', 'site_settings']) {
+  if (!extendedApi.includes(requiredCapability)) throw new Error(`Expected extended API bundle to include ${requiredCapability}.`);
 }
+
 const privacyGuard = readFileSync('dist/server/mojie-privacy-guard.mjs', 'utf8');
-for (const requiredPolicy of ['work_members', '/api/cloud/works', '/api/docx/assets', '/api/collaboration']) {
+for (const requiredPolicy of ['guardMojiePrivateContent', 'work_members', 'docx_assets', 'chapter_comments', 'chapter_suggestions']) {
   if (!privacyGuard.includes(requiredPolicy)) throw new Error(`Expected privacy guard to include ${requiredPolicy}.`);
 }
 if (!entry.includes('guardMojiePrivateContent') || !entry.includes('handleMojieExtendedApi')) {
