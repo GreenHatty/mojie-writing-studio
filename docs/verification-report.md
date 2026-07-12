@@ -11,7 +11,7 @@
 
 ### 代码质量
 
-GitHub Actions `Quality` run `29178530829` 结论：`success`。
+GitHub Actions `Quality` run `29178727640` 结论：`success`。
 
 通过项目：
 
@@ -27,7 +27,7 @@ GitHub Actions `Quality` run `29178530829` 结论：`success`。
 
 ### 真实 Cloudflare D1 隔离预览
 
-`Cloudflare D1 Preview Acceptance` run `29178530832` 结论：`success`。
+`Cloudflare D1 Preview Acceptance` run `29178727652` 结论：`success`。
 
 工作流实际完成：
 
@@ -74,7 +74,7 @@ GitHub Actions `Quality` run `29178530829` 结论：`success`。
 - 会话 Cookie 使用 HttpOnly、Secure、SameSite=Strict；
 - 首次初始化仅在用户表为空且提供正确管理密钥时允许执行。
 
-原核心模块仍保留旧认证实现作为未调用代码，但 Worker 入口会优先且完整地处理所有 `/api/auth/*` 请求，因此线上认证只经过独立兼容模块。打包验证要求该模块存在并检查其 KDF 上限。
+Worker 入口会优先且完整地处理所有 `/api/auth/*` 请求，因此线上认证只经过独立兼容模块。打包验证要求该模块存在并检查其 KDF 上限。
 
 ## 本机创作与写作辅助
 
