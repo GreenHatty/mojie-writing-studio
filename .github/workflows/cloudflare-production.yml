@@ -72,7 +72,22 @@ jobs:
             ')"
           fi
           echo "CLOUDFLARE_D1_DATABASE_ID=$d1_id" >> "$GITHUB_ENV"
-          npx wrangler d1 migrations apply "$CLOUDFLARE_D1_DATABASE_NAME" --remote
+
+          cat > wrangler.production-d1.json <<EOF
+          {
+            "name": "$CLOUDFLARE_WORKER_NAME",
+            "compatibility_date": "2026-07-11",
+            "d1_databases": [
+              {
+                "binding": "DB",
+                "database_name": "$CLOUDFLARE_D1_DATABASE_NAME",
+                "database_id": "$d1_id",
+                "migrations_dir": "migrations"
+              }
+            ]
+          }
+          EOF
+          npx wrangler d1 migrations apply DB --remote --config wrangler.production-d1.json
 
       - name: Verify and build
         run: |
