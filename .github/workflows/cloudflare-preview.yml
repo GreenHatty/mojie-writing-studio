@@ -203,14 +203,27 @@ jobs:
             fi
             sleep 2
           done
+
+          npx wrangler tail "$CLOUDFLARE_WORKER_NAME" --format json > cloudflare-worker-tail.log 2>&1 &
+          tail_pid=$!
+          sleep 4
+          set +e
           node scripts/cloudflare-preview-acceptance.mjs 2>&1 | tee cloudflare-acceptance.log
+          acceptance_status=${PIPESTATUS[0]}
+          set -e
+          sleep 3
+          kill "$tail_pid" 2>/dev/null || true
+          wait "$tail_pid" 2>/dev/null || true
+          exit "$acceptance_status"
 
       - name: Upload acceptance diagnostics
         if: failure() && steps.cloudflare-auth.outputs.ready == 'true'
         uses: actions/upload-artifact@v4
         with:
           name: cloudflare-acceptance-diagnostics-${{ github.run_id }}
-          path: cloudflare-acceptance.log
+          path: |
+            cloudflare-acceptance.log
+            cloudflare-worker-tail.log
           if-no-files-found: warn
           retention-days: 30
 
