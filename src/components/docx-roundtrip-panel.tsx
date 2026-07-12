@@ -14,6 +14,7 @@ import {
   saveLocalDocxAsset,
   type LocalDocxAsset
 } from '../lib/local-docx-vault';
+import { apiRequest } from '../lib/api-client';
 
 type DocxRoundTripPanelProps = {
   workId: string;
@@ -51,17 +52,16 @@ export function DocxRoundTripPanel({ workId }: DocxRoundTripPanelProps) {
   }
 
   useEffect(() => {
-    let active = true;
-    void fetch('/api/auth/session', { credentials: 'same-origin', cache: 'no-store' })
-      .then(async (response) => await response.json() as SessionResponse)
+    const controller = new AbortController();
+    void apiRequest<SessionResponse>('/api/auth/session', { cache: 'no-store', signal: controller.signal })
       .then(async (value) => {
         const nextUserId = value.user?.id || '';
-        if (!active) return;
+        if (controller.signal.aborted) return;
         setUserId(nextUserId);
         if (nextUserId) setSavedAssets(await listLocalDocxAssets(nextUserId, workId));
       })
       .catch(() => undefined);
-    return () => { active = false; };
+    return () => controller.abort();
   }, [workId]);
 
   async function openFile(file: File) {

@@ -1,8 +1,12 @@
 'use client';
 
+import { lazy, Suspense, useState } from 'react';
+
 import type { WorkKind, WorkRecord } from '../lib/repository';
 import { CreateWorkForm } from './create-work-form';
-import { RankingAutomationPanel } from './ranking-automation-panel';
+import { AuxiliaryErrorBoundary } from './auxiliary-error-boundary';
+
+const RankingAutomationPanel = lazy(() => import('./ranking-automation-panel').then((module) => ({ default: module.RankingAutomationPanel })));
 
 type WorkspaceDashboardProps = {
   works: WorkRecord[];
@@ -27,6 +31,7 @@ function formatDate(value: string): string {
 }
 
 export function WorkspaceDashboard({ works, creating = false, todayCount, onCreate, onOpen }: WorkspaceDashboardProps) {
+  const [rankingOpen, setRankingOpen] = useState(false);
   return (
     <main className="workspace-dashboard">
       <header className="dashboard-header">
@@ -56,7 +61,16 @@ export function WorkspaceDashboard({ works, creating = false, todayCount, onCrea
         ))}
       </section>
 
-      <RankingAutomationPanel />
+      <section className="dashboard-optional-module">
+        <button onClick={() => setRankingOpen((value) => !value)} type="button">
+          {rankingOpen ? '关闭平台榜单' : '打开平台榜单'}
+        </button>
+        {rankingOpen ? (
+          <AuxiliaryErrorBoundary title="平台榜单">
+            <Suspense fallback={<p role="status">正在载入榜单模块…</p>}><RankingAutomationPanel /></Suspense>
+          </AuxiliaryErrorBoundary>
+        ) : null}
+      </section>
 
       <section className="dashboard-create">
         <div>

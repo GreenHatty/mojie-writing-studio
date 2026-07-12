@@ -1,4 +1,5 @@
 import { openDB, type DBSchema } from 'idb';
+import { createDatabaseCoordinator, withDatabaseTimeout } from './indexeddb-lifecycle';
 
 export type LocalDocxAsset = {
   id: string;
@@ -24,14 +25,21 @@ interface LocalDocxVaultSchema extends DBSchema {
   };
 }
 
+const vaultName = 'mojie-local-docx-vault';
+const coordinator = typeof indexedDB === 'undefined' ? null : createDatabaseCoordinator(vaultName);
 const databasePromise = typeof indexedDB === 'undefined'
   ? null
-  : openDB<LocalDocxVaultSchema>('mojie-local-docx-vault', 1, {
+  : withDatabaseTimeout(openDB<LocalDocxVaultSchema>(vaultName, 1, {
       upgrade(database) {
         const store = database.createObjectStore('assets', { keyPath: 'id' });
         store.createIndex('by-user-work', ['userId', 'workId']);
+      },
+      blocked() { coordinator?.announce('upgrade-requested'); },
+      blocking(_current, _blocked, event) {
+        coordinator?.announce('versionchange');
+        (event.target as IDBDatabase | null)?.close();
       }
-    });
+    }), 12_000);
 
 function requireDatabase() {
   if (!databasePromise) throw new Error('当前环境不支持 IndexedDB，无法保存本地 DOCX。');

@@ -5,6 +5,6 @@ export default defineConfig({
   plugins: [react()],
   test: {
     environment: 'jsdom',
-    include: ['**/*.test.ts', '**/*.test.tsx']
+    include: ['**/*.test.ts', '**/*.test.tsx', '**/*.test.mjs']
   }
 });

@@ -1,5 +1,6 @@
 node_modules/
 .next/
+.vinext/
 .wrangler/
 out/
 dist/
@@ -9,4 +10,6 @@ dist/
 .codex/
 .playwright-cli/
 output/
+test-results/
+playwright-report/
 tsconfig.tsbuildinfo

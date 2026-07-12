@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { apiRequest, jsonBody } from '../lib/api-client';
 
 type RankingSource = {
@@ -43,6 +43,9 @@ type RankingSnapshot = {
   };
 };
 
+type RankingTaskStatus = 'queued' | 'fetching' | 'parsing' | 'validating' | 'completed' | 'partial' | 'failed' | 'cancelled';
+type RankingTask = { id: string; status: RankingTaskStatus; progress: number; error_code?: string | null };
+
 const DEFAULT_URLS = {
   qidian: 'https://www.qidian.com/rank/',
   fanqie: 'https://fanqienovel.com/rank'
@@ -59,6 +62,8 @@ export function RankingAutomationPanel() {
   const [authorizationNote, setAuthorizationNote] = useState('已获得平台书面授权，仅抓取公开榜单元数据');
   const [busy, setBusy] = useState(false);
   const [status, setStatus] = useState('');
+  const [task, setTask] = useState<RankingTask | null>(null);
+  const pollingController = useRef<AbortController | null>(null);
 
   const latestBySource = useMemo(() => {
     const map = new Map<string, RankingSnapshot>();
@@ -67,10 +72,10 @@ export function RankingAutomationPanel() {
   }, [snapshots]);
   const selectedSnapshot = latestBySource.get(selectedSourceId) ?? snapshots[0];
 
-  async function refresh() {
+  async function refresh(signal?: AbortSignal) {
     const [sourceResponse, snapshotResponse] = await Promise.all([
-      apiRequest<{ sources: RankingSource[] }>('/api/rankings/sources'),
-      apiRequest<{ snapshots: RankingSnapshot[] }>('/api/rankings/snapshots')
+      apiRequest<{ sources: RankingSource[] }>('/api/rankings/sources', { signal }),
+      apiRequest<{ snapshots: RankingSnapshot[] }>('/api/rankings/snapshots', { signal })
     ]);
     setSources(sourceResponse.sources);
     setSnapshots(snapshotResponse.snapshots);
@@ -78,7 +83,11 @@ export function RankingAutomationPanel() {
   }
 
   useEffect(() => {
-    void refresh().catch((error) => setStatus(error instanceof Error ? error.message : '榜单服务读取失败。'));
+    const controller = new AbortController();
+    void refresh(controller.signal).catch((error) => {
+      if (!controller.signal.aborted) setStatus(error instanceof Error ? error.message : '榜单服务读取失败。');
+    });
+    return () => { controller.abort(); pollingController.current?.abort(); };
   }, []);
 
   async function saveSource() {
@@ -102,14 +111,45 @@ export function RankingAutomationPanel() {
     setBusy(true);
     setStatus('');
     try {
-      const result = await apiRequest<{ sources: number; successes: number; failures: Array<{ sourceId: string; message: string }> }>('/api/rankings/run', { method: 'POST' });
-      await refresh();
-      setStatus(`本次处理 ${result.sources} 个来源，成功 ${result.successes} 个${result.failures.length ? `；失败：${result.failures.map((item) => item.message).join('；')}` : '。'}`);
+      pollingController.current?.abort();
+      const controller = new AbortController(); pollingController.current = controller;
+      const created = await apiRequest<{ taskId: string; status: 'queued' }>('/api/rankings/tasks', { method: 'POST', body: jsonBody({}), signal: controller.signal });
+      setTask({ id: created.taskId, status: created.status, progress: 0 });
+      setStatus('榜单任务已进入后台队列，可继续写作或关闭本面板。');
+      void pollTask(created.taskId, controller);
     } catch (error) {
       setStatus(error instanceof Error ? error.message : '自动抓取失败。');
     } finally {
       setBusy(false);
     }
+  }
+
+  async function pollTask(taskId: string, controller: AbortController) {
+    try {
+      while (!controller.signal.aborted) {
+        await new Promise((resolve) => setTimeout(resolve, 1_500));
+        const response = await apiRequest<{ task: RankingTask }>(`/api/rankings/tasks/${encodeURIComponent(taskId)}`, { signal: controller.signal });
+        setTask(response.task);
+        if (['completed', 'partial', 'failed', 'cancelled'].includes(response.task.status)) {
+          if (response.task.status === 'completed' || response.task.status === 'partial') await refresh(controller.signal);
+          setStatus(response.task.status === 'completed' ? '榜单后台任务已完成。' : response.task.status === 'partial' ? '部分来源完成，已保留其他来源的上次成功快照。' : response.task.status === 'cancelled' ? '榜单任务已取消。' : `榜单任务失败：${response.task.error_code || '请稍后重试'}`);
+          return;
+        }
+      }
+    } catch (error) {
+      if (!controller.signal.aborted) setStatus(error instanceof Error ? error.message : '任务状态读取失败，可稍后重试。');
+    } finally {
+      if (pollingController.current === controller) pollingController.current = null;
+      setBusy(false);
+    }
+  }
+
+  async function cancelTask() {
+    if (!task) return;
+    try {
+      await apiRequest(`/api/rankings/tasks/${encodeURIComponent(task.id)}`, { method: 'DELETE' });
+      pollingController.current?.abort(); setTask({ ...task, status: 'cancelled', progress: 100 }); setStatus('榜单任务已取消。');
+    } finally { setBusy(false); }
   }
 
   function changePlatform(next: 'qidian' | 'fanqie') {
@@ -127,7 +167,7 @@ export function RankingAutomationPanel() {
         <label><span>分类</span><input onChange={(event) => setCategory(event.target.value)} placeholder="玄幻 / 都市 / 古言" value={category} /></label>
         <label className="wide"><span>授权榜单网址</span><input onChange={(event) => setSourceUrl(event.target.value)} type="url" value={sourceUrl} /></label>
         <label className="wide"><span>授权记录</span><textarea onChange={(event) => setAuthorizationNote(event.target.value)} value={authorizationNote} /></label>
-        <div className="ranking-form-actions"><button disabled={busy} onClick={() => void saveSource()} type="button">保存自动来源</button><button disabled={busy || !sources.length} onClick={() => void runNow()} type="button">立即抓取全部来源</button></div>
+        <div className="ranking-form-actions"><button disabled={busy} onClick={() => void saveSource()} type="button">保存自动来源</button><button disabled={busy || !sources.length} onClick={() => void runNow()} type="button">创建后台抓取任务</button>{task && !['completed','partial','failed','cancelled'].includes(task.status) ? <button onClick={() => void cancelTask()} type="button">取消任务</button> : null}</div>
       </div>
 
       {sources.length ? (
@@ -154,6 +194,7 @@ export function RankingAutomationPanel() {
           <footer>{selectedSnapshot.commonElements.disclaimer}</footer>
         </section>
       ) : null}
+      {task ? <p className="ranking-status">任务状态：{task.status} · {task.progress}%</p> : null}
       <p className="ranking-status" role="status">{status}</p>
     </details>
   );

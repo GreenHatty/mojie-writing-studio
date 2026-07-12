@@ -1,3 +1,5 @@
+import { rankingAdapterFor, validateRankingUrl } from './ranking-adapters.mjs';
+
 const SESSION_COOKIE = 'mojie_session';
 const SESSION_DAYS = 14;
 const MUTATING = new Set(['POST', 'PUT', 'PATCH', 'DELETE']);
@@ -433,78 +435,6 @@ async function docxRoutes(request, env, pathname) {
   return null;
 }
 
-function stripHtml(value) {
-  return String(value || '').replace(/<script[\s\S]*?<\/script>/giu, ' ').replace(/<style[\s\S]*?<\/style>/giu, ' ').replace(/<[^>]+>/gu, ' ').replace(/&nbsp;/gu, ' ').replace(/&amp;/gu, '&').replace(/&lt;/gu, '<').replace(/&gt;/gu, '>').replace(/\s+/gu, ' ').trim();
-}
-
-function walkBooks(value, output, seen = new Set()) {
-  if (!value || typeof value !== 'object' || seen.has(value) || output.length >= 100) return;
-  seen.add(value);
-  if (Array.isArray(value)) {
-    for (const item of value) walkBooks(item, output, seen);
-    return;
-  }
-  const title = value.bookName || value.book_name || value.title || value.name;
-  const author = value.authorName || value.author_name || value.author || value.writerName || value.writer_name;
-  const id = value.bookId || value.book_id || value.id;
-  if (typeof title === 'string' && title.trim().length >= 2 && (author || id)) {
-    output.push({
-      title: stripHtml(title).slice(0, 200),
-      author: stripHtml(author || '').slice(0, 100),
-      blurb: stripHtml(value.intro || value.description || value.abstract || value.bookAbstract || value.book_abstract || '').slice(0, 1200),
-      tags: Array.isArray(value.tags) ? value.tags.map(stripHtml).filter(Boolean).slice(0, 20) : [],
-      bookId: String(id || ''),
-      rank: Number(value.rank || value.index || output.length + 1),
-      url: String(value.url || value.bookUrl || value.book_url || '')
-    });
-  }
-  for (const child of Object.values(value)) walkBooks(child, output, seen);
-}
-
-function extractJsonScripts(html) {
-  const values = [];
-  for (const match of html.matchAll(/<script[^>]*>([\s\S]*?)<\/script>/giu)) {
-    const text = match[1]?.trim();
-    if (!text) continue;
-    const candidates = [];
-    if (text.startsWith('{') || text.startsWith('[')) candidates.push(text);
-    for (const assignment of text.matchAll(/(?:__NEXT_DATA__|__INITIAL_STATE__|__NUXT__|pageData)\s*=\s*([\s\S]*?)(?:;\s*$|<\/script>)/gmu)) candidates.push(assignment[1]);
-    for (const candidate of candidates) {
-      try { values.push(JSON.parse(candidate)); } catch { /* ignore non-JSON scripts */ }
-    }
-  }
-  return values;
-}
-
-function extractAnchorBooks(html, platform, baseUrl) {
-  const output = [];
-  const pattern = platform === 'qidian'
-    ? /<a\b[^>]*href=["']([^"']*\/book\/\d+[^"']*)["'][^>]*>([\s\S]*?)<\/a>/giu
-    : /<a\b[^>]*href=["']([^"']*(?:\/page\/\d+|\/book\/\d+)[^"']*)["'][^>]*>([\s\S]*?)<\/a>/giu;
-  for (const match of html.matchAll(pattern)) {
-    const title = stripHtml(match[2]);
-    if (title.length < 2 || title.length > 200) continue;
-    let url = match[1];
-    try { url = new URL(url, baseUrl).toString(); } catch { /* keep original */ }
-    output.push({ title, author: '', blurb: '', tags: [], bookId: url.match(/\d+/u)?.[0] || '', rank: output.length + 1, url });
-    if (output.length >= 50) break;
-  }
-  return output;
-}
-
-function dedupeTopTen(items) {
-  const seen = new Set();
-  const result = [];
-  for (const item of items.sort((left, right) => (left.rank || 999) - (right.rank || 999))) {
-    const key = `${item.bookId || ''}:${item.title}`;
-    if (seen.has(key) || !item.title) continue;
-    seen.add(key);
-    result.push({ ...item, rank: result.length + 1 });
-    if (result.length >= 10) break;
-  }
-  return result;
-}
-
 function analyzeCommonElements(items) {
   const lexicon = ['系统','穿越','重生','开局','签到','觉醒','高武','修仙','玄幻','都市','末世','无限流','诸天','种田','基建','年代','甜宠','先婚后爱','豪门','总裁','权谋','宫斗','宅斗','复仇','逆袭','救赎','团宠','马甲','读心','直播','御兽','模拟','空间','逃荒','女强','无CP','爽文','悬疑','灵异','规则怪谈','历史','争霸','科幻','游戏','同人','衍生'];
   const counts = new Map();
@@ -522,23 +452,61 @@ function analyzeCommonElements(items) {
 }
 
 async function fetchRankingSource(source) {
-  const url = new URL(source.source_url);
-  const allowed = PLATFORM_HOSTS[source.platform] || [];
-  if (!allowed.some((host) => url.hostname === host || url.hostname.endsWith(`.${host}`))) throw new Error('榜单来源域名不在授权白名单内。');
-  const response = await fetch(url, { headers: { 'user-agent': 'MojieRankingBot/1.0 (+authorized ranking metadata collector)', accept: 'text/html,application/json;q=0.9,*/*;q=0.8' }, redirect: 'follow' });
-  if (!response.ok) throw new Error(`来源返回HTTP ${response.status}`);
-  const contentType = response.headers.get('content-type') || '';
-  const text = await response.text();
-  if (text.length > 8_000_000) throw new Error('榜单页面超过8MB安全上限。');
-  let candidates = [];
-  if (contentType.includes('json') || text.trim().startsWith('{') || text.trim().startsWith('[')) {
-    try { walkBooks(JSON.parse(text), candidates); } catch { /* continue with HTML parser */ }
+  const result = await rankingAdapterFor(source.platform).fetchAndParse(source);
+  if (!result.items.length) throw new Error('ranking_empty_result');
+  return { items: result.items, sourceHash: await sha256Hex(result.raw) };
+}
+
+async function fetchWithTimeout(url, init = {}, timeoutMs = 12_000) {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), timeoutMs);
+  try { return await fetch(url, { ...init, signal: controller.signal }); }
+  finally { clearTimeout(timer); }
+}
+
+async function updateRankingTask(env, taskId, status, progress, errorCode = null) {
+  const finishedAt = ['completed', 'partial', 'failed', 'cancelled'].includes(status) ? nowIso() : null;
+  await env.DB.prepare('UPDATE ranking_tasks SET status=?,progress=?,error_code=?,updated_at=?,finished_at=COALESCE(?,finished_at) WHERE id=?')
+    .bind(status, progress, errorCode, nowIso(), finishedAt, taskId).run();
+}
+
+export async function processRankingTask(env, taskId) {
+  const task = await env.DB.prepare('SELECT * FROM ranking_tasks WHERE id=?').bind(taskId).first();
+  if (!task || task.status === 'cancelled') return;
+  const sources = task.source_id
+    ? await env.DB.prepare('SELECT * FROM ranking_sources WHERE id=? AND enabled=1').bind(task.source_id).all()
+    : await env.DB.prepare('SELECT * FROM ranking_sources WHERE enabled=1 ORDER BY platform,list_name,category').all();
+  const rows = sources.results || [];
+  let successes = 0; const failures = [];
+  await env.DB.prepare('UPDATE ranking_tasks SET status=?,attempts=attempts+1,progress=5,started_at=COALESCE(started_at,?),updated_at=? WHERE id=?').bind('fetching', nowIso(), nowIso(), taskId).run();
+  for (let index = 0; index < rows.length; index += 1) {
+    const current = await env.DB.prepare('SELECT status FROM ranking_tasks WHERE id=?').bind(taskId).first();
+    if (current?.status === 'cancelled') return;
+    const source = rows[index];
+    try {
+      await updateRankingTask(env, taskId, 'fetching', Math.max(5, Math.floor(index / Math.max(1, rows.length) * 70)));
+      const { items, sourceHash } = await fetchRankingSource(source);
+      const afterFetch = await env.DB.prepare('SELECT status FROM ranking_tasks WHERE id=?').bind(taskId).first();
+      if (afterFetch?.status === 'cancelled') return;
+      await updateRankingTask(env, taskId, 'parsing', 75);
+      if (!items.length) throw new Error('ranking_empty_result');
+      await updateRankingTask(env, taskId, 'validating', 85);
+      const capturedAt = nowIso();
+      await env.DB.batch([
+        env.DB.prepare('INSERT INTO ranking_snapshots(id,source_id,captured_at,ranking_date,items_json,common_elements_json,source_hash) VALUES(?,?,?,?,?,?,?)')
+          .bind(makeId('ranking'), source.id, capturedAt, capturedAt.slice(0, 10), JSON.stringify(items), JSON.stringify(analyzeCommonElements(items)), sourceHash),
+        env.DB.prepare('UPDATE ranking_sources SET last_success_at=?,last_error=NULL,updated_at=? WHERE id=?').bind(capturedAt, capturedAt, source.id)
+      ]);
+      successes += 1;
+    } catch (error) {
+      const code = (error instanceof Error ? error.message : 'ranking_failed').slice(0, 120);
+      failures.push({ sourceId: source.id, code });
+      await env.DB.prepare('UPDATE ranking_sources SET last_error=?,updated_at=? WHERE id=?').bind(code, nowIso(), source.id).run();
+    }
   }
-  for (const value of extractJsonScripts(text)) walkBooks(value, candidates);
-  candidates.push(...extractAnchorBooks(text, source.platform, url));
-  const items = dedupeTopTen(candidates);
-  if (!items.length) throw new Error('页面中未解析到可识别的前十作品，请检查来源URL或解析器配置。');
-  return { items, sourceHash: await sha256Hex(text) };
+  const status = successes === rows.length && rows.length ? 'completed' : successes ? 'partial' : 'failed';
+  await updateRankingTask(env, taskId, status, 100, failures[0]?.code || null);
+  await audit(env, task.created_by, 'ranking.task.complete', 'ranking_task', taskId, { sources: rows.length, successes, failures: failures.length });
 }
 
 export async function runRankingCollection(env, actorId = null) {
@@ -567,7 +535,7 @@ export async function runRankingCollection(env, actorId = null) {
   return { sources: (rows.results || []).length, successes, failures };
 }
 
-async function rankingRoutes(request, env, pathname) {
+async function rankingRoutes(request, env, pathname, ctx) {
   if (pathname === '/api/rankings/sources' && request.method === 'GET') {
     await getSession(request, env);
     const rows = await env.DB.prepare('SELECT id,platform,list_name,category,source_url,parser_type,enabled,authorization_note,last_success_at,last_error,created_at,updated_at FROM ranking_sources ORDER BY platform,list_name,category').all();
@@ -577,9 +545,9 @@ async function rankingRoutes(request, env, pathname) {
     const session = await requireGlobalAction(request, env, 'rankings');
     const body = await readJson(request);
     if (!['qidian', 'fanqie'].includes(body.platform)) throw new HttpError(400, 'invalid_platform', '平台必须为qidian或fanqie。');
-    const sourceUrl = new URL(String(body.sourceUrl || ''));
-    const allowed = PLATFORM_HOSTS[body.platform];
-    if (!allowed.some((host) => sourceUrl.hostname === host || sourceUrl.hostname.endsWith(`.${host}`))) throw new HttpError(400, 'invalid_source_host', '来源必须是对应平台的授权域名。');
+    let sourceUrl;
+    try { sourceUrl = validateRankingUrl(String(body.sourceUrl || ''), body.platform); }
+    catch { throw new HttpError(400, 'invalid_source_host', '来源必须是对应平台的HTTPS授权域名。'); }
     const authorizationNote = String(body.authorizationNote || '').trim();
     if (authorizationNote.length < 5) throw new HttpError(400, 'authorization_required', '请记录该抓取来源的授权依据。');
     const id = body.id || makeId('source');
@@ -590,16 +558,34 @@ async function rankingRoutes(request, env, pathname) {
     await audit(env, session.user.id, 'ranking_source.upsert', 'ranking_source', id);
     return responseJson({ sourceId: id }, 201);
   }
-  if (pathname === '/api/rankings/run' && request.method === 'POST') {
+  if ((pathname === '/api/rankings/tasks' || pathname === '/api/rankings/run') && request.method === 'POST') {
     const session = await requireGlobalAction(request, env, 'rankings');
-    return responseJson(await runRankingCollection(env, session.user.id));
+    const body = await readJson(request);
+    const taskId = makeId('ranking-task'); const timestamp = nowIso();
+    await env.DB.prepare('INSERT INTO ranking_tasks(id,source_id,status,attempts,progress,error_code,created_by,created_at,updated_at) VALUES(?,?,?,0,0,NULL,?,?,?)')
+      .bind(taskId, body.sourceId || null, 'queued', session.user.id, timestamp, timestamp).run();
+    const promise = processRankingTask(env, taskId).catch((error) => updateRankingTask(env, taskId, 'failed', 100, error instanceof Error ? error.message.slice(0, 120) : 'ranking_failed'));
+    if (ctx?.waitUntil) ctx.waitUntil(promise); else void promise;
+    return responseJson({ taskId, status: 'queued' }, 202);
+  }
+  const taskMatch = pathname.match(/^\/api\/rankings\/tasks\/([^/]+)$/u);
+  if (taskMatch && request.method === 'GET') {
+    await requireGlobalAction(request, env, 'rankings');
+    const task = await env.DB.prepare('SELECT id,source_id,status,attempts,progress,error_code,created_at,updated_at,started_at,finished_at FROM ranking_tasks WHERE id=?').bind(taskMatch[1]).first();
+    if (!task) throw new HttpError(404, 'ranking_task_not_found', '榜单任务不存在。');
+    return responseJson({ task });
+  }
+  if (taskMatch && request.method === 'DELETE') {
+    await requireGlobalAction(request, env, 'rankings');
+    await updateRankingTask(env, taskMatch[1], 'cancelled', 100);
+    return responseJson({ taskId: taskMatch[1], status: 'cancelled' });
   }
   if (pathname === '/api/rankings/snapshots' && request.method === 'GET') {
     await getSession(request, env);
     const sourceId = new URL(request.url).searchParams.get('sourceId');
     const query = sourceId
-      ? env.DB.prepare('SELECT * FROM ranking_snapshots WHERE source_id=? ORDER BY captured_at DESC LIMIT 60').bind(sourceId)
-      : env.DB.prepare('SELECT s.*,r.platform,r.list_name,r.category FROM ranking_snapshots s JOIN ranking_sources r ON r.id=s.source_id ORDER BY s.captured_at DESC LIMIT 200');
+      ? env.DB.prepare('SELECT * FROM ranking_snapshots WHERE source_id=? ORDER BY captured_at DESC LIMIT 20').bind(sourceId)
+      : env.DB.prepare('SELECT s.*,r.platform,r.list_name,r.category FROM ranking_snapshots s JOIN ranking_sources r ON r.id=s.source_id WHERE s.id=(SELECT s2.id FROM ranking_snapshots s2 WHERE s2.source_id=s.source_id ORDER BY s2.captured_at DESC LIMIT 1) ORDER BY s.captured_at DESC LIMIT 50');
     const rows = await query.all();
     return responseJson({ snapshots: (rows.results || []).map((row) => ({ ...row, items: JSON.parse(row.items_json), commonElements: JSON.parse(row.common_elements_json) })) });
   }
@@ -661,7 +647,7 @@ async function s3Request(config, method, key, body) {
   const signingKey = await hmacSha256(serviceKey, 'aws4_request');
   const signature = await hmacSha256(signingKey, stringToSign, 'hex');
   const authorization = `AWS4-HMAC-SHA256 Credential=${config.accessKeyId}/${scope}, SignedHeaders=${signedHeaders}, Signature=${signature}`;
-  const response = await fetch(url, { method, body: method === 'PUT' ? payload : undefined, headers: { host, 'x-amz-date': amzDate, 'x-amz-content-sha256': payloadHash, authorization, 'content-type': 'application/json' } });
+  const response = await fetchWithTimeout(url, { method, body: method === 'PUT' ? payload : undefined, headers: { host, 'x-amz-date': amzDate, 'x-amz-content-sha256': payloadHash, authorization, 'content-type': 'application/json' } }, 15_000);
   if (!response.ok && response.status !== 404) throw new Error(`S3兼容存储返回HTTP ${response.status}`);
 }
 
@@ -673,7 +659,7 @@ async function putBackup(env, targetType, config, key, bytes) {
   }
   if (targetType === 'webdav') {
     const url = new URL(`${String(config.baseUrl).replace(/\/+$/u, '')}/${key.split('/').map(encodeURIComponent).join('/')}`);
-    const response = await fetch(url, { method: 'PUT', body: bytes, headers: { authorization: basicAuthorization(config.username || '', config.password || ''), 'content-type': 'application/json' } });
+    const response = await fetchWithTimeout(url, { method: 'PUT', body: bytes, headers: { authorization: basicAuthorization(config.username || '', config.password || ''), 'content-type': 'application/json' } }, 15_000);
     if (!response.ok) throw new Error(`WebDAV返回HTTP ${response.status}`);
     return;
   }
@@ -688,7 +674,7 @@ async function deleteBackup(env, targetType, config, key) {
   }
   if (targetType === 'webdav') {
     const url = new URL(`${String(config.baseUrl).replace(/\/+$/u, '')}/${key.split('/').map(encodeURIComponent).join('/')}`);
-    const response = await fetch(url, { method: 'DELETE', headers: { authorization: basicAuthorization(config.username || '', config.password || '') } });
+    const response = await fetchWithTimeout(url, { method: 'DELETE', headers: { authorization: basicAuthorization(config.username || '', config.password || '') } });
     if (!response.ok && response.status !== 404) throw new Error(`WebDAV删除返回HTTP ${response.status}`);
     return;
   }
@@ -779,14 +765,14 @@ async function backupRoutes(request, env, pathname) {
   return null;
 }
 
-export async function handleMojieApi(request, env) {
+export async function handleMojieApi(request, env, ctx) {
   const url = new URL(request.url);
   if (!url.pathname.startsWith('/api/')) return null;
   try {
     assertSameOrigin(request);
     const routeHandlers = [authRoutes, cloudRoutes, docxRoutes, rankingRoutes, backupRoutes];
     for (const handler of routeHandlers) {
-      const response = await handler(request, env, url.pathname);
+      const response = await handler(request, env, url.pathname, ctx);
       if (response) return response;
     }
     return responseError('接口不存在。', 404, 'not_found');

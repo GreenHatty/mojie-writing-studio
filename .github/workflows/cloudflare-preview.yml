@@ -124,6 +124,7 @@ jobs:
         run: |
           node --check scripts/mojie-auth-api.mjs
           node --check scripts/mojie-api.mjs
+          node --check scripts/ranking-adapters.mjs
           node --check scripts/mojie-extended-api.mjs
           node --check scripts/mojie-privacy-guard.mjs
           node --check scripts/cloudflare-fetch-entry.mjs

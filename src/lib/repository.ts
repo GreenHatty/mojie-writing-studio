@@ -1,4 +1,5 @@
 import { deleteDB, openDB, type DBSchema, type IDBPDatabase } from 'idb';
+import { createDatabaseCoordinator, withDatabaseTimeout, type DatabaseLifecycleListener, type DatabaseLifecycleState } from './indexeddb-lifecycle';
 import {
   createProjectEntity,
   type ProjectEntity,
@@ -112,10 +113,14 @@ export type WritingRepositoryOptions = {
   databaseName?: string;
   ownerId: string;
   now?: () => string;
+  onLifecycleState?: DatabaseLifecycleListener;
+  openTimeoutMs?: number;
 };
 
 export type WritingRepository = {
   readonly databaseName: string;
+  getLifecycleState(): DatabaseLifecycleState;
+  close(): void;
   createWork(input: { title: string; kind: WorkKind }): Promise<{
     work: WorkRecord;
     volume: VolumeRecord;
@@ -176,8 +181,16 @@ export function createWritingRepository(options: WritingRepositoryOptions): Writ
   const databaseName = options.databaseName ?? 'mojie-writing-studio';
   const now = options.now ?? (() => new Date().toISOString());
   const ownerId = options.ownerId;
-  const database = openDB<WritingDatabase>(databaseName, 4, {
+  let lifecycleState: DatabaseLifecycleState = 'idle';
+  const notify = (state: DatabaseLifecycleState, detail?: string) => {
+    lifecycleState = state;
+    options.onLifecycleState?.(state, detail);
+  };
+  const coordinator = createDatabaseCoordinator(databaseName, options.onLifecycleState);
+  notify('opening');
+  const database = withDatabaseTimeout(openDB<WritingDatabase>(databaseName, 4, {
     upgrade(db) {
+      notify('upgrading');
       if (!db.objectStoreNames.contains('works')) {
         const works = db.createObjectStore('works', { keyPath: 'id' });
         works.createIndex('ownerId', 'ownerId');
@@ -216,7 +229,23 @@ export function createWritingRepository(options: WritingRepositoryOptions): Writ
         entities.createIndex('workId', 'workId');
         entities.createIndex('kind', 'kind');
       }
-    }
+    },
+    blocked() {
+      notify('blocked', '请关闭使用该写作空间的其他标签页后重试。');
+      coordinator.announce('upgrade-requested');
+    },
+    blocking(_currentVersion, _blockedVersion, event) {
+      notify('versionchange', '检测到新版本，已停止新的本地写入。');
+      coordinator.announce('versionchange');
+      (event.target as IDBDatabase | null)?.close();
+    },
+    terminated() { notify('closed', '本地数据库连接意外关闭。'); }
+  }), options.openTimeoutMs).then((connection) => {
+    notify('ready');
+    return connection;
+  }).catch((error) => {
+    notify('upgrade-failed', error instanceof Error ? error.message : '本地数据库升级失败。');
+    throw error;
   });
 
   async function db(): Promise<IDBPDatabase<WritingDatabase>> {
@@ -265,6 +294,8 @@ export function createWritingRepository(options: WritingRepositoryOptions): Writ
 
   return {
     databaseName,
+    getLifecycleState: () => lifecycleState,
+    close() { void database.then((connection) => connection.close()).catch(() => undefined); coordinator.close(); notify('closed'); },
     async createWork(input) {
       const createdAt = now();
       const work: WorkRecord = {

@@ -12,7 +12,7 @@ export default {
     if (authResponse) return authResponse;
     const extendedResponse = await handleMojieExtendedApi(request, env);
     if (extendedResponse) return extendedResponse;
-    const apiResponse = await handleMojieApi(request, env);
+    const apiResponse = await handleMojieApi(request, env, ctx);
     if (apiResponse) return apiResponse;
     return handler.fetch(request, env, ctx);
   },
