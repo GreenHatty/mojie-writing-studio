@@ -14,7 +14,7 @@ npm run build
 npm run test:worker-entry
 ```
 
-2026-07-12 最近一次完整验证：48 个测试文件、91 项测试通过，类型检查、生产构建和 Worker 入口检查通过。使用本地模拟 API 的 Microsoft Edge 验收覆盖桌面、1080px 平板和 390px 手机视口，修复 IndexedDB 操作 ID 竞态后控制台无错误。浏览器产物位于被 Git 忽略的 `output/playwright/` 与 `.playwright-cli/`。
+2026-07-12 最近一次完整验证：51 个测试文件、98 项测试通过，类型检查、生产构建和 Worker 入口检查通过。使用本地模拟 API 的 Microsoft Edge 验收覆盖桌面、1080px 平板和 390px 手机视口，修复 IndexedDB 操作 ID 竞态后控制台无错误。浏览器产物位于被 Git 忽略的 `output/playwright/` 与 `.playwright-cli/`。
 
 生产环境必须配置 D1 `DB`、R2 `OBJECTS`、`OWNER_INITIALIZATION_KEY`、`LOCAL_DRAFT_KEK`、`MOJIE_ADMIN_TOKEN` 和 `MOJIE_BACKUP_MASTER_KEY`。外部备份还需要 WebDAV 或 S3 账号。实际值只保存在受保护 Secret 中，不得提交仓库。
 
