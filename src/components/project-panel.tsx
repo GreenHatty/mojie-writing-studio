@@ -3,6 +3,8 @@
 import { useEffect, useMemo, useState } from 'react';
 import type { ProjectEntity, ProjectEntityKind } from '../lib/project-model';
 import type { WritingRepository } from '../lib/repository';
+import { ChapterPlanningPanel } from './chapter-planning-panel';
+import { CollaborationPanel } from './collaboration-panel';
 import { SearchReplacePanel } from './search-replace-panel';
 import { VisualSettingsPanel } from './visual-settings-panel';
 
@@ -35,6 +37,7 @@ export function ProjectPanel({ repository, workId }: ProjectPanelProps) {
   const [busy, setBusy] = useState(false);
   const [status, setStatus] = useState('');
   const [showVisualTools, setShowVisualTools] = useState(false);
+  const [showChapterPlan, setShowChapterPlan] = useState(true);
 
   const selected = useMemo(() => entities.find((entity) => entity.id === selectedId) ?? null, [entities, selectedId]);
 
@@ -109,10 +112,15 @@ export function ProjectPanel({ repository, workId }: ProjectPanelProps) {
     }
   }
 
-  const currentType = ENTITY_TYPES.find((item) => item.kind === kind)!;
+  const currentType = ENTITY_TYPES.find((item) => item.kind === kind) ?? ENTITY_TYPES[0]!;
 
   return (
     <section className="project-panel">
+      <section className="chapter-plan-section">
+        <button className="visual-tools-toggle" onClick={() => setShowChapterPlan((value) => !value)} type="button">{showChapterPlan ? '收起当前章节细纲' : '打开当前章节细纲'}</button>
+        {showChapterPlan ? <ChapterPlanningPanel repository={repository} workId={workId} /> : null}
+      </section>
+
       <div className="project-kind-tabs" aria-label="设定类型" role="tablist">
         {ENTITY_TYPES.map((item) => (
           <button aria-selected={kind === item.kind} key={item.kind} onClick={() => changeKind(item.kind)} role="tab" type="button">{item.label}</button>
@@ -138,6 +146,8 @@ export function ProjectPanel({ repository, workId }: ProjectPanelProps) {
         <label><span>摘要与重点</span><textarea onChange={(event) => setSummary(event.target.value)} placeholder={`记录${currentType.label}的核心信息、关联和待完善内容`} value={summary} /></label>
         <div className="project-form-footer"><span role="status">{status}</span><button disabled={busy} onClick={() => void save()} type="button">{busy ? '正在保存…' : '保存'}</button></div>
       </div>
+
+      <CollaborationPanel workId={workId} />
       <SearchReplacePanel repository={repository} workId={workId} />
       <section className="visual-tools-section">
         <button className="visual-tools-toggle" onClick={() => setShowVisualTools((value) => !value)} type="button">{showVisualTools ? '收起时间线、关系图与地图' : '打开时间线、关系图与地图'}</button>
