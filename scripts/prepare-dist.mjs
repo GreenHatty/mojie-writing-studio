@@ -21,6 +21,7 @@ const wrangler = {
   compatibility_date: '2026-07-11',
   compatibility_flags: ['nodejs_compat'],
   main: 'server/index.js',
+  workers_dev: true,
   assets: {
     binding: 'ASSETS',
     directory: 'client',
