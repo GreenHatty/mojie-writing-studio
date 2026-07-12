@@ -74,11 +74,6 @@ jobs:
             echo "MOJIE_ACCEPTANCE_REPORT=cloudflare-preview-acceptance.json"
           } >> "$GITHUB_ENV"
 
-          {
-            echo "worker_name=$worker_name"
-            echo "d1_name=$d1_name"
-          } >> "$GITHUB_OUTPUT"
-
           npx wrangler --version
           npx wrangler d1 create "$d1_name" --location apac
           d1_json="$(npx wrangler d1 list --json)"
@@ -142,14 +137,35 @@ jobs:
       - name: Deploy isolated preview Worker
         if: steps.cloudflare-auth.outputs.ready == 'true'
         id: deploy
-        uses: cloudflare/wrangler-action@v3
+        shell: bash
+        run: |
+          set -euo pipefail
+          exec > >(tee cloudflare-deploy.log) 2>&1
+
+          npx wrangler deploy --config dist/wrangler.json
+          printf '%s' "$MOJIE_ADMIN_TOKEN" | npx wrangler secret put MOJIE_ADMIN_TOKEN --config dist/wrangler.json
+          printf '%s' "$MOJIE_BACKUP_MASTER_KEY" | npx wrangler secret put MOJIE_BACKUP_MASTER_KEY --config dist/wrangler.json
+
+          subdomain_json="$(curl --fail --silent --show-error \
+            --header "Authorization: Bearer ${CLOUDFLARE_API_TOKEN}" \
+            "https://api.cloudflare.com/client/v4/accounts/${CLOUDFLARE_ACCOUNT_ID}/workers/subdomain")"
+          workers_subdomain="$(SUBDOMAIN_JSON="$subdomain_json" node --input-type=module -e '
+            const value = JSON.parse(process.env.SUBDOMAIN_JSON || "{}");
+            if (!value.success || !value.result?.subdomain) throw new Error("Cloudflare workers.dev subdomain is not configured");
+            process.stdout.write(value.result.subdomain);
+          ')"
+          preview_url="https://${CLOUDFLARE_WORKER_NAME}.${workers_subdomain}.workers.dev"
+          echo "deployment-url=$preview_url" >> "$GITHUB_OUTPUT"
+          echo "Preview URL: $preview_url"
+
+      - name: Upload deployment diagnostics
+        if: failure() && steps.cloudflare-auth.outputs.ready == 'true'
+        uses: actions/upload-artifact@v4
         with:
-          apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
-          accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
-          command: deploy --config dist/wrangler.json
-          secrets: |
-            MOJIE_ADMIN_TOKEN
-            MOJIE_BACKUP_MASTER_KEY
+          name: cloudflare-deploy-diagnostics-${{ github.run_id }}
+          path: cloudflare-deploy.log
+          if-no-files-found: warn
+          retention-days: 30
 
       - name: Run D1, permission and local-storage acceptance
         if: steps.cloudflare-auth.outputs.ready == 'true'
