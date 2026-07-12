@@ -28,12 +28,19 @@ class CookieClient {
     if (method !== 'GET' && method !== 'HEAD') headers.set('origin', baseUrl);
     if (options.json !== undefined) headers.set('content-type', 'application/json');
 
-    const response = await fetch(`${baseUrl}${path}`, {
-      method,
-      headers,
-      body: options.json !== undefined ? JSON.stringify(options.json) : options.body,
-      redirect: 'manual'
-    });
+    let response;
+    for (let attempt = 0; attempt < 6; attempt += 1) {
+      response = await fetch(`${baseUrl}${path}`, {
+        method,
+        headers,
+        body: options.json !== undefined ? JSON.stringify(options.json) : options.body,
+        redirect: 'manual'
+      });
+      if (method !== 'GET' || ![404, 502, 503].includes(response.status) || attempt === 5) break;
+      await response.body?.cancel();
+      await new Promise((resolve) => setTimeout(resolve, 2_000));
+    }
+    if (!response) throw new Error(`${this.name} ${method} ${path} 未收到响应。`);
 
     const setCookies = typeof response.headers.getSetCookie === 'function'
       ? response.headers.getSetCookie()
