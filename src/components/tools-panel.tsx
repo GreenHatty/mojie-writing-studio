@@ -1,13 +1,9 @@
 'use client';
 
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { generateNames, type NameCategory } from '../lib/name-generator';
-import {
-  findRepeatedPhrases,
-  inspectText,
-  normalizeChinesePunctuation,
-  type IssueSeverity
-} from '../lib/text-tools';
+import { findRepeatedPhrases, normalizeChinesePunctuation, type IssueSeverity, type TextIssue } from '../lib/text-tools';
+import { inspectTextWithoutBlocking } from '../lib/text-worker-client';
 import { countWritingCharacters } from '../lib/writing';
 import { CalculatorPanel } from './calculator-panel';
 import { FocusSprint } from './focus-sprint';
@@ -23,6 +19,14 @@ const SEVERITY_LABEL: Record<IssueSeverity, string> = {
   warning: '高概率问题',
   suggestion: '风格建议',
   review: '需要核实'
+};
+
+const INSPECTION_OPTIONS = {
+  sensitiveWords: [
+    { term: '自杀', platform: '通用', severity: 'review' as const },
+    { term: '赌博', platform: '通用', severity: 'review' as const }
+  ],
+  overusedWords: ['然后', '突然', '不由得']
 };
 
 const NAME_CATEGORIES: NameCategory[] = [
@@ -42,17 +46,29 @@ export function ToolsPanel({ text }: ToolsPanelProps) {
   const [category, setCategory] = useState<NameCategory>('现代中文姓名');
   const [seed, setSeed] = useState(1);
   const [showNormalized, setShowNormalized] = useState(false);
-  const issues = useMemo(
-    () =>
-      inspectText(text, {
-        sensitiveWords: [
-          { term: '自杀', platform: '通用', severity: 'review' },
-          { term: '赌博', platform: '通用', severity: 'review' }
-        ],
-        overusedWords: ['然后', '突然', '不由得']
-      }),
-    [text]
-  );
+  const [issues, setIssues] = useState<TextIssue[]>([]);
+  const [checking, setChecking] = useState(false);
+  const [inspectionMode, setInspectionMode] = useState<'worker' | 'inline'>('inline');
+
+  useEffect(() => {
+    let cancelled = false;
+    setChecking(true);
+    const delay = window.setTimeout(() => {
+      void inspectTextWithoutBlocking(text, INSPECTION_OPTIONS).then((result) => {
+        if (cancelled) return;
+        setIssues(result.issues);
+        setInspectionMode(result.mode);
+        setChecking(false);
+      }).catch(() => {
+        if (!cancelled) setChecking(false);
+      });
+    }, 180);
+    return () => {
+      cancelled = true;
+      window.clearTimeout(delay);
+    };
+  }, [text]);
+
   const repeatedPhrases = useMemo(
     () => findRepeatedPhrases(text, { minimumLength: 6, maximumLength: 12 }).slice(0, 8),
     [text]
@@ -68,7 +84,8 @@ export function ToolsPanel({ text }: ToolsPanelProps) {
       <div className="panel-section-heading">
         <div>
           <p className="eyebrow">文本检查</p>
-          <h2>{issues.length ? `${issues.length}项待检查` : '暂未发现问题'}</h2>
+          <h2>{checking ? '后台检查中…' : issues.length ? `${issues.length}项待检查` : '暂未发现问题'}</h2>
+          <small>{inspectionMode === 'worker' ? '长文本已在后台线程处理' : '当前内容使用即时检查'}</small>
         </div>
         <button onClick={() => setShowNormalized((value) => !value)} type="button">
           {showNormalized ? '收起标点预览' : '标点规范预览'}
