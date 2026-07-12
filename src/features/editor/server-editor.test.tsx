@@ -30,6 +30,7 @@ describe('ServerEditor', () => {
     await waitFor(() => expect(fetchMock.mock.calls.some((call) => (call[1] as RequestInit | undefined)?.method === 'POST')).toBe(true));
     const init = fetchMock.mock.calls.find((call) => (call[1] as RequestInit | undefined)?.method === 'POST')![1] as RequestInit;
     expect(JSON.parse(String(init.body))).toMatchObject({ baseRevision: 3, canonicalContent: { type: 'doc' } });
+    expect(offline.enqueueSync.mock.calls.every((call) => typeof call[0] === 'string' && call[0].length > 0)).toBe(true);
     expect(await screen.findByText('已保存')).toBeTruthy();
   });
 
