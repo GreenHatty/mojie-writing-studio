@@ -1,5 +1,6 @@
 export type ProjectEntityKind =
   | 'outline'
+  | 'chapter-plan'
   | 'character'
   | 'location'
   | 'timeline'
