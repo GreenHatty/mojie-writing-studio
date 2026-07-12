@@ -203,7 +203,16 @@ jobs:
             fi
             sleep 2
           done
-          node scripts/cloudflare-preview-acceptance.mjs
+          node scripts/cloudflare-preview-acceptance.mjs 2>&1 | tee cloudflare-acceptance.log
+
+      - name: Upload acceptance diagnostics
+        if: failure() && steps.cloudflare-auth.outputs.ready == 'true'
+        uses: actions/upload-artifact@v4
+        with:
+          name: cloudflare-acceptance-diagnostics-${{ github.run_id }}
+          path: cloudflare-acceptance.log
+          if-no-files-found: warn
+          retention-days: 30
 
       - name: Upload acceptance report
         if: always() && steps.cloudflare-auth.outputs.ready == 'true'
