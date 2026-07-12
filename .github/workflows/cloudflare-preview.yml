@@ -122,9 +122,11 @@ jobs:
       - name: Verify source before deployment
         if: steps.cloudflare-auth.outputs.ready == 'true'
         run: |
+          node --check scripts/mojie-auth-api.mjs
           node --check scripts/mojie-api.mjs
           node --check scripts/mojie-extended-api.mjs
           node --check scripts/mojie-privacy-guard.mjs
+          node --check scripts/cloudflare-fetch-entry.mjs
           node --check scripts/cloudflare-preview-acceptance.mjs
           node scripts/test-privacy-guard.mjs
           npm test
