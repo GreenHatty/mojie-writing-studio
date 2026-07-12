@@ -29,6 +29,7 @@ jobs:
         run: npm ci --legacy-peer-deps --loglevel=error --no-audit --no-fund
       - name: Verify Worker API syntax
         run: |
+          node --check scripts/mojie-auth-api.mjs
           node --check scripts/mojie-api.mjs
           node --check scripts/mojie-extended-api.mjs
           node --check scripts/mojie-privacy-guard.mjs
