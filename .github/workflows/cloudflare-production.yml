@@ -7,6 +7,12 @@ on:
         description: Type DEPLOY_MOJIE to provision and deploy production
         required: true
         type: string
+  pull_request:
+    branches:
+      - main
+    paths:
+      - .github/workflows/cloudflare-production.yml
+      - .github/deploy-requests/mojie-production.json
 
 concurrency:
   group: cloudflare-production
@@ -17,7 +23,7 @@ permissions:
 
 jobs:
   deploy:
-    if: inputs.confirmation == 'DEPLOY_MOJIE'
+    if: github.event_name == 'pull_request' || inputs.confirmation == 'DEPLOY_MOJIE'
     environment: production
     runs-on: ubuntu-latest
     timeout-minutes: 35
@@ -32,6 +38,19 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+
+      - name: Validate one-time deployment request
+        if: github.event_name == 'pull_request'
+        shell: bash
+        run: |
+          set -euo pipefail
+          node --input-type=module <<'NODE'
+          import { readFileSync } from 'node:fs';
+          const request = JSON.parse(readFileSync('.github/deploy-requests/mojie-production.json', 'utf8'));
+          if (request.confirmation !== 'DEPLOY_MOJIE') throw new Error('Invalid production confirmation');
+          if (request.target !== 'production') throw new Error('Invalid deployment target');
+          if (request.sourceCommit !== 'bc3df83e1c2f4ad4ea1bdeeaf12c51dc265df805') throw new Error('Unexpected source commit');
+          NODE
 
       - name: Validate required secrets
         shell: bash
