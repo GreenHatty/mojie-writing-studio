@@ -89,7 +89,22 @@ jobs:
             process.stdout.write(String(item.uuid || item.id));
           ')"
           echo "CLOUDFLARE_D1_DATABASE_ID=$d1_id" >> "$GITHUB_ENV"
-          npx wrangler d1 migrations apply "$d1_name" --remote
+
+          cat > wrangler.preview-d1.json <<EOF
+          {
+            "name": "$worker_name",
+            "compatibility_date": "2026-07-11",
+            "d1_databases": [
+              {
+                "binding": "DB",
+                "database_name": "$d1_name",
+                "database_id": "$d1_id",
+                "migrations_dir": "migrations"
+              }
+            ]
+          }
+          EOF
+          npx wrangler d1 migrations apply DB --remote --config wrangler.preview-d1.json
 
           admin_token="$(node --input-type=module -e "import { randomBytes } from 'node:crypto'; process.stdout.write(randomBytes(48).toString('base64url'))")"
           backup_key="$(node --input-type=module -e "import { randomBytes } from 'node:crypto'; process.stdout.write(randomBytes(48).toString('base64url'))")"
