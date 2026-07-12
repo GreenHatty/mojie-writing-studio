@@ -61,12 +61,34 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
+          exec > >(tee cloudflare-provision.log) 2>&1
+
           suffix="${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}"
           worker_name="mojie-preview-${suffix}"
           d1_name="${worker_name}-db"
           docx_bucket="${worker_name}-docx"
           backup_bucket="${worker_name}-backup"
 
+          # Persist names before the first external mutation so cleanup can remove
+          # partially created resources after any later failure.
+          {
+            echo "CLOUDFLARE_WORKER_NAME=$worker_name"
+            echo "CLOUDFLARE_D1_DATABASE_NAME=$d1_name"
+            echo "CLOUDFLARE_DOCX_BUCKET_NAME=$docx_bucket"
+            echo "CLOUDFLARE_BACKUP_BUCKET_NAME=$backup_bucket"
+            echo "MOJIE_D1_NAME=$d1_name"
+            echo "MOJIE_ACCEPTANCE_REPORT=cloudflare-preview-acceptance.json"
+          } >> "$GITHUB_ENV"
+
+          {
+            echo "worker_name=$worker_name"
+            echo "d1_name=$d1_name"
+            echo "docx_bucket=$docx_bucket"
+            echo "backup_bucket=$backup_bucket"
+          } >> "$GITHUB_OUTPUT"
+
+          npx wrangler --version
+          npx wrangler d1 list --json >/tmp/mojie-d1-before.json
           npx wrangler d1 create "$d1_name" --location apac
           d1_json="$(npx wrangler d1 list --json)"
           d1_id="$(D1_JSON="$d1_json" D1_NAME="$d1_name" node --input-type=module -e '
@@ -75,6 +97,7 @@ jobs:
             if (!item) throw new Error(`D1 database not found: ${process.env.D1_NAME}`);
             process.stdout.write(String(item.uuid || item.id));
           ')"
+          echo "CLOUDFLARE_D1_DATABASE_ID=$d1_id" >> "$GITHUB_ENV"
 
           npx wrangler r2 bucket create "$docx_bucket" --location apac
           npx wrangler r2 bucket create "$backup_bucket" --location apac
@@ -86,23 +109,18 @@ jobs:
           echo "::add-mask::$backup_key"
 
           {
-            echo "CLOUDFLARE_WORKER_NAME=$worker_name"
-            echo "CLOUDFLARE_D1_DATABASE_ID=$d1_id"
-            echo "CLOUDFLARE_D1_DATABASE_NAME=$d1_name"
-            echo "CLOUDFLARE_DOCX_BUCKET_NAME=$docx_bucket"
-            echo "CLOUDFLARE_BACKUP_BUCKET_NAME=$backup_bucket"
             echo "MOJIE_ADMIN_TOKEN=$admin_token"
             echo "MOJIE_BACKUP_MASTER_KEY=$backup_key"
-            echo "MOJIE_D1_NAME=$d1_name"
-            echo "MOJIE_ACCEPTANCE_REPORT=cloudflare-preview-acceptance.json"
           } >> "$GITHUB_ENV"
 
-          {
-            echo "worker_name=$worker_name"
-            echo "d1_name=$d1_name"
-            echo "docx_bucket=$docx_bucket"
-            echo "backup_bucket=$backup_bucket"
-          } >> "$GITHUB_OUTPUT"
+      - name: Upload provisioning diagnostics
+        if: failure() && steps.cloudflare-auth.outputs.ready == 'true'
+        uses: actions/upload-artifact@v4
+        with:
+          name: cloudflare-provision-diagnostics-${{ github.run_id }}
+          path: cloudflare-provision.log
+          if-no-files-found: warn
+          retention-days: 30
 
       - name: Verify source before deployment
         if: steps.cloudflare-auth.outputs.ready == 'true'
