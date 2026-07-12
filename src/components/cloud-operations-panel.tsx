@@ -40,15 +40,25 @@ function downloadJson(value: unknown, fileName: string): void {
   window.setTimeout(() => URL.revokeObjectURL(url), 0);
 }
 
+function assertHttpsUrl(value: string, label: string): void {
+  let parsed: URL;
+  try {
+    parsed = new URL(value);
+  } catch {
+    throw new Error(`${label}格式无效。`);
+  }
+  if (parsed.protocol !== 'https:') throw new Error(`${label}必须使用 HTTPS。`);
+}
+
 export function CloudOperationsPanel({ work }: CloudOperationsPanelProps) {
   const [cloudRevision, setCloudRevision] = useState<number | null>(null);
   const [cloudUpdatedAt, setCloudUpdatedAt] = useState('');
   const [busy, setBusy] = useState(false);
   const [status, setStatus] = useState('');
   const [policies, setPolicies] = useState<BackupPolicy[]>([]);
-  const [targetType, setTargetType] = useState<'r2' | 'webdav' | 's3-compatible'>('r2');
-  const [intervalMinutes, setIntervalMinutes] = useState(30);
-  const [retentionHours, setRetentionHours] = useState(72);
+  const [targetType, setTargetType] = useState<'webdav' | 's3-compatible'>('webdav');
+  const [intervalMinutes, setIntervalMinutes] = useState(360);
+  const [retentionHours, setRetentionHours] = useState(168);
   const [webdav, setWebdav] = useState({ baseUrl: '', username: '', password: '' });
   const [s3, setS3] = useState({ endpoint: '', bucket: '', region: 'auto', accessKeyId: '', secretAccessKey: '', pathStyle: true });
 
@@ -122,7 +132,13 @@ export function CloudOperationsPanel({ work }: CloudOperationsPanelProps) {
     setBusy(true);
     setStatus('');
     try {
-      const config = targetType === 'r2' ? {} : targetType === 'webdav' ? webdav : s3;
+      if (targetType === 'webdav') {
+        assertHttpsUrl(webdav.baseUrl, 'WebDAV根地址');
+      } else {
+        assertHttpsUrl(s3.endpoint, 'S3服务端点');
+        if (!s3.bucket.trim() || !s3.accessKeyId.trim() || !s3.secretAccessKey) throw new Error('请完整填写Bucket、Access Key ID和Secret Access Key。');
+      }
+      const config = targetType === 'webdav' ? webdav : s3;
       await apiRequest('/api/backups/policies', {
         method: 'POST',
         body: jsonBody({
@@ -171,10 +187,10 @@ export function CloudOperationsPanel({ work }: CloudOperationsPanelProps) {
 
   return (
     <details className="cloud-operations-panel">
-      <summary>云端权限同步与自动备份</summary>
+      <summary>云端正文同步与第三方备份</summary>
       <section className="cloud-sync-section">
         <div>
-          <strong>云端作品修订</strong>
+          <strong>D1 云端作品修订</strong>
           <span>{cloudRevision === null ? '正在读取…' : cloudRevision === 0 ? '尚未建立云端副本' : `修订 ${cloudRevision}${cloudUpdatedAt ? ` · ${new Date(cloudUpdatedAt).toLocaleString('zh-CN')}` : ''}`}</span>
         </div>
         <div className="cloud-actions">
@@ -185,10 +201,11 @@ export function CloudOperationsPanel({ work }: CloudOperationsPanelProps) {
 
       <section className="backup-policy-section">
         <h3>自动临时备份</h3>
+        <p>站点不启用 Cloudflare R2。自动备份需连接你自己的 WebDAV 或 S3 兼容存储；凭据会由服务端加密保存。</p>
         <div className="backup-grid">
-          <label><span>目标</span><select onChange={(event) => setTargetType(event.target.value as typeof targetType)} value={targetType}><option value="r2">站点 R2 对象存储</option><option value="webdav">WebDAV</option><option value="s3-compatible">S3 兼容对象存储</option></select></label>
-          <label><span>每隔多少分钟</span><input min={5} onChange={(event) => setIntervalMinutes(Number(event.target.value))} type="number" value={intervalMinutes} /></label>
-          <label><span>多少小时后删除</span><input min={1} onChange={(event) => setRetentionHours(Number(event.target.value))} type="number" value={retentionHours} /></label>
+          <label><span>目标</span><select onChange={(event) => setTargetType(event.target.value as typeof targetType)} value={targetType}><option value="webdav">WebDAV</option><option value="s3-compatible">S3 兼容对象存储</option></select></label>
+          <label><span>每隔多少分钟</span><input max={43200} min={5} onChange={(event) => setIntervalMinutes(Number(event.target.value))} type="number" value={intervalMinutes} /></label>
+          <label><span>多少小时后删除</span><input max={8760} min={1} onChange={(event) => setRetentionHours(Number(event.target.value))} type="number" value={retentionHours} /></label>
         </div>
         {targetType === 'webdav' ? (
           <div className="backup-grid">
@@ -196,8 +213,7 @@ export function CloudOperationsPanel({ work }: CloudOperationsPanelProps) {
             <label><span>用户名</span><input onChange={(event) => setWebdav((value) => ({ ...value, username: event.target.value }))} value={webdav.username} /></label>
             <label><span>密码/应用专用密码</span><input onChange={(event) => setWebdav((value) => ({ ...value, password: event.target.value }))} type="password" value={webdav.password} /></label>
           </div>
-        ) : null}
-        {targetType === 's3-compatible' ? (
+        ) : (
           <div className="backup-grid">
             <label><span>服务端点</span><input onChange={(event) => setS3((value) => ({ ...value, endpoint: event.target.value }))} placeholder="https://s3.example.com" value={s3.endpoint} /></label>
             <label><span>Bucket</span><input onChange={(event) => setS3((value) => ({ ...value, bucket: event.target.value }))} value={s3.bucket} /></label>
@@ -206,9 +222,9 @@ export function CloudOperationsPanel({ work }: CloudOperationsPanelProps) {
             <label><span>Secret Access Key</span><input onChange={(event) => setS3((value) => ({ ...value, secretAccessKey: event.target.value }))} type="password" value={s3.secretAccessKey} /></label>
             <label className="check-label"><input checked={s3.pathStyle} onChange={(event) => setS3((value) => ({ ...value, pathStyle: event.target.checked }))} type="checkbox" />使用路径式地址</label>
           </div>
-        ) : null}
+        )}
         <div className="cloud-actions"><button disabled={busy} onClick={() => void savePolicy()} type="button">开启或更新自动备份</button><button disabled={busy || !policies.some((policy) => policy.enabled)} onClick={() => void runBackupNow()} type="button">立即执行一次</button></div>
-        {policies.length ? <ul className="backup-policy-list">{policies.map((policy) => <li key={policy.id}><div><strong>{policy.target_type}</strong><span>每 {policy.interval_minutes} 分钟 · 保留 {policy.retention_hours} 小时</span><small>{policy.last_error || (policy.next_backup_at ? `下次：${new Date(policy.next_backup_at).toLocaleString('zh-CN')}` : '已关闭')}</small></div>{policy.enabled ? <button disabled={busy} onClick={() => void disablePolicy(policy.id)} type="button">关闭</button> : null}</li>)}</ul> : null}
+        {policies.length ? <ul className="backup-policy-list">{policies.map((policy) => <li key={policy.id}><div><strong>{policy.target_type === 'r2' ? '旧R2策略（不可新建）' : policy.target_type}</strong><span>每 {policy.interval_minutes} 分钟 · 保留 {policy.retention_hours} 小时</span><small>{policy.last_error || (policy.next_backup_at ? `下次：${new Date(policy.next_backup_at).toLocaleString('zh-CN')}` : '已关闭')}</small></div>{policy.enabled ? <button disabled={busy} onClick={() => void disablePolicy(policy.id)} type="button">关闭</button> : null}</li>)}</ul> : null}
       </section>
       <p className="cloud-status" role="status">{status}</p>
     </details>
