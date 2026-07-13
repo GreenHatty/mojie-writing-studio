@@ -29,4 +29,9 @@ describe('apiRequest', () => {
     const request = apiRequest('/cancel', { signal: controller.signal }); controller.abort();
     await expect(request).rejects.toEqual(expect.objectContaining({ code: 'cancelled' }));
   });
+
+  it('preserves the string error codes returned by privacy-protected core routes', async () => {
+    vi.stubGlobal('fetch', vi.fn(async () => new Response(JSON.stringify({ error: 'UNAUTHENTICATED' }), { status: 401, statusText: 'Unauthorized', headers: { 'Content-Type': 'application/json' } })));
+    await expect(apiRequest('/api/core/auth/session')).rejects.toMatchObject({ code: 'UNAUTHENTICATED', status: 401 });
+  });
 });

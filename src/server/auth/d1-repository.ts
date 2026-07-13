@@ -33,6 +33,16 @@ export function createD1AuthRepository(database: D1Database): AuthRepository {
         password: { algorithm: row.password_algorithm, iterations: Number(row.password_iterations), salt: new Uint8Array(row.password_salt), digest: new Uint8Array(row.password_digest) }
       };
     },
+    async findById(userId: string): Promise<AuthUser | null> {
+      const row = await database.prepare('SELECT id, account_identifier, platform_role, password_algorithm, password_iterations, password_salt, password_digest FROM platform_accounts WHERE id = ? LIMIT 1').bind(userId).first<UserRow>();
+      if (!row) return null;
+      return {
+        id: row.id,
+        account: row.account_identifier,
+        platformRole: row.platform_role,
+        password: { algorithm: row.password_algorithm, iterations: Number(row.password_iterations), salt: new Uint8Array(row.password_salt), digest: new Uint8Array(row.password_digest) }
+      };
+    },
     async updatePassword(userId: string, password: StoredPassword): Promise<void> {
       await database.prepare('UPDATE platform_accounts SET password_algorithm=?, password_iterations=?, password_salt=?, password_digest=?, updated_at=? WHERE id=?')
         .bind(password.algorithm, password.iterations, new Uint8Array(password.salt).buffer, new Uint8Array(password.digest).buffer, new Date().toISOString(), userId).run();

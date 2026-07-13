@@ -77,18 +77,16 @@ export async function apiRequest<T>(path: string, init: ApiRequestInit = {}): Pr
     composed.dispose();
   }
   if (!response.ok) {
-    let payload: { error?: { message?: string; code?: string; details?: unknown } } = {};
+    let payload: { error?: { message?: string; code?: string; details?: unknown } | string } = {};
     try {
       payload = await response.json() as typeof payload;
     } catch {
       // The status text is used below.
     }
-    throw new ApiError(
-      payload.error?.message || response.statusText || '请求失败',
-      response.status,
-      payload.error?.code || 'request_failed',
-      payload.error?.details
-    );
+    const error = payload.error;
+    const code = typeof error === 'string' ? error : error?.code || 'request_failed';
+    const message = typeof error === 'string' ? error : error?.message || response.statusText || '请求失败';
+    throw new ApiError(message, response.status, code, typeof error === 'string' ? undefined : error?.details);
   }
   if (response.status === 204) return undefined as T;
   try {

@@ -81,7 +81,14 @@ export function createAuthHandlers(dependencies: Dependencies) {
       try {
         const { token, session } = await activeSession(request);
         const renewed = await renewSessionIfNeeded(dependencies.sessionStore, token, session);
-        const response = protectedJson({ userId: renewed.session.userId, expiresAt: renewed.session.expiresAt, renewed: renewed.renewed });
+        const user = await dependencies.authRepository.findById(renewed.session.userId);
+        if (!user) throw new AppError('UNAUTHENTICATED', 401);
+        const response = protectedJson({
+          user: { id: user.id, account: user.account, platformRole: user.platformRole },
+          csrf: renewed.session.csrfState,
+          expiresAt: renewed.session.expiresAt,
+          renewed: renewed.renewed
+        });
         if (renewed.renewed) response.headers.append('Set-Cookie', serializeSessionCookie(token, cookieEnvironment));
         return response;
       } catch (error) { return errorResponse(error); }
