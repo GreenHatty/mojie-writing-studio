@@ -3,6 +3,7 @@ import {
   createStoredZip,
   exportDocxRoundTrip,
   importDocxRoundTrip,
+  readZipEntries,
   sha256Hex
 } from './docx-roundtrip';
 
@@ -82,5 +83,17 @@ describe('DOCX round trip', () => {
   it('requires the same paragraph count in format-preserving mode', async () => {
     const session = await importDocxRoundTrip(sampleDocx());
     await expect(exportDocxRoundTrip(session, ['只有一段'])).rejects.toThrow(/段落数量/u);
+  });
+
+  it('rejects an entry whose declared uncompressed length does not match its data', async () => {
+    const corrupted = sampleDocx().slice();
+    const view = new DataView(corrupted.buffer, corrupted.byteOffset, corrupted.byteLength);
+    let centralOffset = -1;
+    for (let offset = 0; offset + 46 <= corrupted.byteLength; offset += 1) {
+      if (view.getUint32(offset, true) === 0x02014b50) { centralOffset = offset; break; }
+    }
+    expect(centralOffset).toBeGreaterThanOrEqual(0);
+    view.setUint32(centralOffset + 24, view.getUint32(centralOffset + 24, true) + 1, true);
+    await expect(readZipEntries(corrupted)).rejects.toThrow(/解压长度/u);
   });
 });

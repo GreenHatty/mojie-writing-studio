@@ -32,7 +32,7 @@ describe('WritingStudio', () => {
 
     expect(await screen.findByText('第一卷')).toBeTruthy();
     expect(screen.getByText('第1章')).toBeTruthy();
-    expect(screen.getByDisplayValue('第1章')).toBeTruthy();
+    await waitFor(() => expect(screen.getByDisplayValue('第1章')).toBeTruthy());
   });
 
   it('shows every existing work on a dashboard and opens the selected work', async () => {

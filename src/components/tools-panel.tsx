@@ -2,16 +2,18 @@
 
 import { useEffect, useMemo, useState } from 'react';
 import { generateNames, type NameCategory } from '../lib/name-generator';
-import { findRepeatedPhrases, normalizeChinesePunctuation, type IssueSeverity, type TextIssue } from '../lib/text-tools';
+import { normalizeChinesePunctuation, type InspectTextOptions, type IssueSeverity, type RepeatedPhrase, type TextIssue } from '../lib/text-tools';
 import { inspectTextWithoutBlocking } from '../lib/text-worker-client';
 import { countWritingCharacters } from '../lib/writing';
 import { CalculatorPanel } from './calculator-panel';
 import { FocusSprint } from './focus-sprint';
-import { QuickPhrases } from './quick-phrases';
+import { QuickPhrases, type QuickPhraseStore } from './quick-phrases';
 import { WritingAssistantPanel } from './writing-assistant-panel';
 
 type ToolsPanelProps = {
   text: string;
+  inspectionOptions?: InspectTextOptions;
+  phraseStore?: QuickPhraseStore;
 };
 
 const SEVERITY_LABEL: Record<IssueSeverity, string> = {
@@ -42,11 +44,12 @@ const NAME_CATEGORIES: NameCategory[] = [
   '科幻代号'
 ];
 
-export function ToolsPanel({ text }: ToolsPanelProps) {
+export function ToolsPanel({ text, inspectionOptions = INSPECTION_OPTIONS, phraseStore }: ToolsPanelProps) {
   const [category, setCategory] = useState<NameCategory>('现代中文姓名');
   const [seed, setSeed] = useState(1);
   const [showNormalized, setShowNormalized] = useState(false);
   const [issues, setIssues] = useState<TextIssue[]>([]);
+  const [repeatedPhrases, setRepeatedPhrases] = useState<RepeatedPhrase[]>([]);
   const [checking, setChecking] = useState(false);
   const [inspectionMode, setInspectionMode] = useState<'worker' | 'inline'>('inline');
 
@@ -54,9 +57,10 @@ export function ToolsPanel({ text }: ToolsPanelProps) {
     let cancelled = false;
     setChecking(true);
     const delay = window.setTimeout(() => {
-      void inspectTextWithoutBlocking(text, INSPECTION_OPTIONS).then((result) => {
+      void inspectTextWithoutBlocking(text, inspectionOptions, { minimumLength: 6, maximumLength: 12, ignoredTerms: inspectionOptions.whitelist }).then((result) => {
         if (cancelled) return;
         setIssues(result.issues);
+        setRepeatedPhrases(result.repeatedPhrases.slice(0, 8));
         setInspectionMode(result.mode);
         setChecking(false);
       }).catch(() => {
@@ -67,12 +71,8 @@ export function ToolsPanel({ text }: ToolsPanelProps) {
       cancelled = true;
       window.clearTimeout(delay);
     };
-  }, [text]);
+  }, [inspectionOptions, text]);
 
-  const repeatedPhrases = useMemo(
-    () => findRepeatedPhrases(text, { minimumLength: 6, maximumLength: 12 }).slice(0, 8),
-    [text]
-  );
   const names = useMemo(() => generateNames({ category, count: 8, seed }), [category, seed]);
   const normalized = useMemo(() => normalizeChinesePunctuation(text), [text]);
   const wordCount = useMemo(() => countWritingCharacters(text), [text]);
@@ -163,7 +163,7 @@ export function ToolsPanel({ text }: ToolsPanelProps) {
         </ul>
       </div>
 
-      <QuickPhrases />
+      <QuickPhrases store={phraseStore} />
       <CalculatorPanel />
       <FocusSprint currentWordCount={wordCount} />
     </section>

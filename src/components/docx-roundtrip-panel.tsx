@@ -18,6 +18,7 @@ import { apiRequest } from '../lib/api-client';
 
 type DocxRoundTripPanelProps = {
   workId: string;
+  userId?: string;
 };
 
 type SessionResponse = {
@@ -35,13 +36,13 @@ function downloadBytes(bytes: Uint8Array | ArrayBuffer, fileName: string): void 
   window.setTimeout(() => URL.revokeObjectURL(url), 0);
 }
 
-export function DocxRoundTripPanel({ workId }: DocxRoundTripPanelProps) {
+export function DocxRoundTripPanel({ workId, userId: suppliedUserId }: DocxRoundTripPanelProps) {
   const [session, setSession] = useState<DocxRoundTripSession | null>(null);
   const [paragraphs, setParagraphs] = useState<string[]>([]);
   const [fileName, setFileName] = useState('document.docx');
   const [editedHash, setEditedHash] = useState('');
   const [localAssetId, setLocalAssetId] = useState('');
-  const [userId, setUserId] = useState('');
+  const [userId, setUserId] = useState(suppliedUserId ?? '');
   const [savedAssets, setSavedAssets] = useState<LocalDocxAsset[]>([]);
   const [busy, setBusy] = useState(false);
   const [status, setStatus] = useState('');
@@ -52,6 +53,11 @@ export function DocxRoundTripPanel({ workId }: DocxRoundTripPanelProps) {
   }
 
   useEffect(() => {
+    if (suppliedUserId) {
+      setUserId(suppliedUserId);
+      void refreshAssets(suppliedUserId);
+      return;
+    }
     const controller = new AbortController();
     void apiRequest<SessionResponse>('/api/auth/session', { cache: 'no-store', signal: controller.signal })
       .then(async (value) => {
@@ -62,7 +68,7 @@ export function DocxRoundTripPanel({ workId }: DocxRoundTripPanelProps) {
       })
       .catch(() => undefined);
     return () => controller.abort();
-  }, [workId]);
+  }, [suppliedUserId, workId]);
 
   async function openFile(file: File) {
     setBusy(true);
@@ -189,7 +195,7 @@ export function DocxRoundTripPanel({ workId }: DocxRoundTripPanelProps) {
   }
 
   async function removeSavedAsset(asset: LocalDocxAsset) {
-    await deleteLocalDocxAsset(asset.id);
+    await deleteLocalDocxAsset(userId, asset.id);
     if (localAssetId === asset.id) setLocalAssetId('');
     await refreshAssets(userId);
     setStatus('本机 DOCX 记录已删除。');

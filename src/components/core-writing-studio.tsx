@@ -1,7 +1,7 @@
 'use client';
 
 import type { JSONContent } from '@tiptap/core';
-import { useEffect, useMemo, useRef, useState, type CSSProperties } from 'react';
+import { lazy, Suspense, useEffect, useMemo, useRef, useState, type CSSProperties } from 'react';
 import { ApiError } from '../lib/api-client';
 import {
   createCoreChapterVersion,
@@ -38,8 +38,11 @@ import {
   type CoreWorkSummary
 } from '../lib/core-api';
 import type { UserDraftStore } from '../lib/offline/draft-store';
+import { AuxiliaryErrorBoundary } from './auxiliary-error-boundary';
 import { RichTextEditor } from './rich-text-editor';
 import { shortBrand, useSiteProfile } from './site-profile-context';
+
+const CoreAuthoringDrawer = lazy(() => import('./core-authoring-drawer').then((module) => ({ default: module.CoreAuthoringDrawer })));
 
 type SaveState = 'idle' | 'local' | 'saving' | 'saved' | 'offline' | 'conflict' | 'error';
 type RightPanel = 'note' | 'versions' | 'search' | 'trash';
@@ -92,6 +95,7 @@ export function CoreWritingStudio({ user, csrf, draftStore, onLogout }: { user: 
   const [busy, setBusy] = useState(false);
   const [search, setSearch] = useState('');
   const [focusMode, setFocusMode] = useState(false);
+  const [toolboxOpen, setToolboxOpen] = useState(false);
   const [mobilePanel, setMobilePanel] = useState<'none' | 'directory' | 'context'>('none');
   const [online, setOnline] = useState(() => typeof navigator === 'undefined' || navigator.onLine);
   const [todayCount, setTodayCount] = useState(0);
@@ -502,6 +506,12 @@ export function CoreWritingStudio({ user, csrf, draftStore, onLogout }: { user: 
     setFocusMode(false);
   }
 
+  async function openImportedWork(workId: string, chapterId?: string): Promise<void> {
+    setToolboxOpen(false);
+    await refreshDashboard();
+    await openWork(workId, chapterId);
+  }
+
   const matchingChapters = search.trim()
     ? new Set(activeChapters.filter((item) => item.title.toLocaleLowerCase().includes(search.trim().toLocaleLowerCase())).map((item) => item.id))
     : null;
@@ -530,7 +540,7 @@ export function CoreWritingStudio({ user, csrf, draftStore, onLogout }: { user: 
     <header className="studio-topbar">
       <button aria-label="返回工作台" className="brand-lockup" onClick={() => void returnToDashboard()} type="button"><span className="brand-mark">墨</span><span>{shortBrand(siteName)}</span></button>
       <div className="work-identity"><span>{directory.kind === 'long' ? '长篇小说' : directory.kind === 'short' ? '短篇小说' : '随笔'}</span><strong>{directory.title}</strong></div>
-      <div className="topbar-actions"><span className={`network-state ${online ? '' : 'is-offline'}`}>{online ? saveLabel[saveState] : '离线写作中'}</span><button aria-expanded={mobilePanel === 'directory'} className="mobile-panel-button" onClick={() => setMobilePanel((current) => current === 'directory' ? 'none' : 'directory')} type="button">目录</button><button aria-expanded={mobilePanel === 'context'} className="mobile-panel-button tablet-context-button" onClick={() => setMobilePanel((current) => current === 'context' ? 'none' : 'context')} type="button">工具</button><button className="quiet-button" onClick={() => setFocusMode((value) => !value)} type="button">{focusMode ? '退出专注' : '专注模式'}</button><button className="quiet-button" onClick={onLogout} type="button">退出</button></div>
+      <div className="topbar-actions"><span className={`network-state ${online ? '' : 'is-offline'}`}>{online ? saveLabel[saveState] : '离线写作中'}</span><button aria-expanded={mobilePanel === 'directory'} className="mobile-panel-button" onClick={() => setMobilePanel((current) => current === 'directory' ? 'none' : 'directory')} type="button">目录</button><button aria-expanded={mobilePanel === 'context'} className="mobile-panel-button tablet-context-button" onClick={() => setMobilePanel((current) => current === 'context' ? 'none' : 'context')} type="button">章工具</button><button className="quiet-button" onClick={() => setToolboxOpen(true)} type="button">写作工具箱</button><button className="quiet-button" onClick={() => setFocusMode((value) => !value)} type="button">{focusMode ? '退出专注' : '专注模式'}</button><button className="quiet-button" onClick={onLogout} type="button">退出</button></div>
     </header>
     <aside aria-label="作品目录" className={`studio-sidebar ${mobilePanel === 'directory' ? 'is-mobile-open' : ''}`}>
       <div className="sidebar-heading"><div><p className="eyebrow">目录</p><h1>{directory.title}</h1></div><div className="directory-actions">{canEditDirectory ? <button aria-label="新建分卷" className="quiet-button" disabled={busy} onClick={() => void addVolume()} type="button">＋卷</button> : null}<button aria-label="新建章节" className="icon-button" disabled={busy || !canEditDirectory} onClick={() => void addChapter()} type="button">＋</button></div></div>
@@ -548,5 +558,6 @@ export function CoreWritingStudio({ user, csrf, draftStore, onLogout }: { user: 
       <div className="context-tabs" role="tablist"><button aria-selected={rightPanel === 'note'} onClick={() => setRightPanel('note')} role="tab" type="button">备注</button><button aria-selected={rightPanel === 'versions'} onClick={() => setRightPanel('versions')} role="tab" type="button">版本</button><button aria-selected={rightPanel === 'search'} onClick={() => setRightPanel('search')} role="tab" type="button">全书查找</button>{canEditDirectory ? <button aria-selected={rightPanel === 'trash'} onClick={() => void openTrash()} role="tab" type="button">回收站</button> : null}</div>
       {rightPanel === 'note' ? <section className="note-panel"><p>这是仅当前账号可见的私人章节备注，不会进入正文或导出内容。</p><textarea aria-label="本章备注" onBlur={() => void saveNote()} onChange={(event) => setNote(event.target.value)} placeholder="记录伏笔、问题或改稿方向…" value={note} /></section> : rightPanel === 'versions' ? <section className="versions-panel"><p>恢复前会自动保留当前内容。</p>{versions.length ? <ul>{versions.map((version) => <li key={version.id}><div><strong>{version.label ?? version.reason}</strong><small>{new Date(version.createdAt).toLocaleString('zh-CN')}</small></div><button onClick={() => void restoreVersion(version)} type="button">恢复</button></li>)}</ul> : <div className="context-empty">尚无版本。可点击正文上方“保存版本”建立关键快照。</div>}</section> : rightPanel === 'search' ? <section className="work-search-panel"><label><span>查找正文与章节标题</span><input aria-label="全书查找" onChange={(event) => setWorkSearch(event.target.value)} onKeyDown={(event) => { if (event.key === 'Enter') void searchAllChapters(); }} placeholder="输入关键词" value={workSearch} /></label><button disabled={!workSearch.trim()} onClick={() => void searchAllChapters()} type="button">查找</button>{searchResults.length ? <ul>{searchResults.map((result) => <li key={result.chapterId}><button onClick={() => void (async () => { await flushBeforeTransition(); await loadChapter(result.chapterId); setMobilePanel('none'); })()} type="button"><strong>{result.volumeTitle} · {result.chapterTitle}</strong><span>{result.snippet || '章节标题匹配'}</span><small>{result.matchCount} 处匹配</small></button></li>)}</ul> : workSearch ? <p className="context-empty">输入关键词后进行查找；结果只来自当前作品。</p> : null}</section> : <section className="versions-panel"><p>已删除章节只在此作品的作者或编辑账号中可见。</p>{trashedChapters.length ? <ul>{trashedChapters.map((item) => <li key={item.id}><div><strong>{item.title}</strong><small>{new Date(item.deletedAt).toLocaleString('zh-CN')}</small></div><button disabled={busy} onClick={() => void restoreTrashChapter(item.id)} type="button">恢复</button></li>)}</ul> : <div className="context-empty">回收站是空的。</div>}</section>}
     </aside>
+    {toolboxOpen ? <AuxiliaryErrorBoundary title="写作工具箱"><Suspense fallback={<div className="authoring-drawer-loading">正在加载写作工具箱…</div>}><CoreAuthoringDrawer csrf={csrf} directory={directory} draftStore={draftStore} onClose={() => setToolboxOpen(false)} onImported={openImportedWork} text={plainText} userId={user.id} /></Suspense></AuxiliaryErrorBoundary> : null}
   </main>;
 }

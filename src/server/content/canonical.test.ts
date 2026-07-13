@@ -19,4 +19,17 @@ describe('canonical Tiptap content', () => {
   it('creates editable content from plain text', () => {
     expect(canonicalPlainText(canonicalFromPlainText('甲\n乙'))).toBe('甲\n乙');
   });
+
+  it('preserves supported rich-text marks and heading attributes without adding inline newlines', () => {
+    const canonical = normalizeCanonicalContent({ type: 'doc', content: [
+      { type: 'heading', attrs: { level: 2, onclick: 'ignored' }, content: [{ type: 'text', text: '标题' }] },
+      { type: 'paragraph', content: [{ type: 'text', text: '加粗', marks: [{ type: 'bold' }, { type: 'link', attrs: { href: 'javascript:bad' } }] }, { type: 'text', text: '连续文本', marks: [{ type: 'italic' }] }] },
+      { type: 'script', content: [{ type: 'text', text: 'ignored' }] }
+    ] });
+    expect(canonical).toMatchObject({ content: [
+      { type: 'heading', attrs: { level: 2 } },
+      { type: 'paragraph', content: [{ marks: [{ type: 'bold' }] }, { marks: [{ type: 'italic' }] }] }
+    ] });
+    expect(canonicalPlainText(canonical)).toBe('标题\n加粗连续文本');
+  });
 });

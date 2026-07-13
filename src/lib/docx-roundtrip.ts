@@ -74,7 +74,13 @@ async function inflateRaw(data: Uint8Array): Promise<Uint8Array> {
   return new Uint8Array(await new Response(stream).arrayBuffer());
 }
 
-async function readZip(bytes: Uint8Array): Promise<Map<string, Uint8Array>> {
+export type ZipReadOptions = { maximumArchiveBytes?: number; maximumEntries?: number; maximumUncompressedBytes?: number };
+
+export async function readZipEntries(bytes: Uint8Array, options: ZipReadOptions = {}): Promise<Map<string, Uint8Array>> {
+  const maximumArchiveBytes = options.maximumArchiveBytes ?? 100 * 1024 * 1024;
+  const maximumEntries = options.maximumEntries ?? 4_096;
+  const maximumUncompressedBytes = options.maximumUncompressedBytes ?? 250 * 1024 * 1024;
+  if (bytes.byteLength > maximumArchiveBytes) throw new Error('压缩包超过允许的文件大小。');
   const view = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength);
   let eocdOffset = -1;
   const minimum = Math.max(0, bytes.byteLength - 65_557);
@@ -86,29 +92,42 @@ async function readZip(bytes: Uint8Array): Promise<Map<string, Uint8Array>> {
   }
   if (eocdOffset < 0) throw new Error('DOCX压缩包结构无效。');
   const entryCount = readU16(view, eocdOffset + 10);
+  if (entryCount > maximumEntries) throw new Error('压缩包文件项过多。');
   const centralOffset = readU32(view, eocdOffset + 16);
   const entries = new Map<string, Uint8Array>();
   let cursor = centralOffset;
+  let totalUncompressedBytes = 0;
 
   for (let index = 0; index < entryCount; index += 1) {
+    if (cursor < 0 || cursor + 46 > bytes.byteLength) throw new Error('DOCX中央目录越界。');
     if (readU32(view, cursor) !== 0x02014b50) throw new Error('DOCX中央目录损坏。');
+    const flags = readU16(view, cursor + 8);
+    if ((flags & 0x0001) !== 0) throw new Error('不支持加密的DOCX压缩包。');
     const method = readU16(view, cursor + 10);
     const compressedSize = readU32(view, cursor + 20);
+    const uncompressedSize = readU32(view, cursor + 24);
+    totalUncompressedBytes += uncompressedSize;
+    if (totalUncompressedBytes > maximumUncompressedBytes) throw new Error('压缩包解压后体积超过安全上限。');
     const fileNameLength = readU16(view, cursor + 28);
     const extraLength = readU16(view, cursor + 30);
     const commentLength = readU16(view, cursor + 32);
     const localOffset = readU32(view, cursor + 42);
+    if (cursor + 46 + fileNameLength + extraLength + commentLength > bytes.byteLength) throw new Error('DOCX中央目录文件项越界。');
     const name = textDecoder.decode(bytes.slice(cursor + 46, cursor + 46 + fileNameLength));
 
+    if (localOffset + 30 > bytes.byteLength) throw new Error(`DOCX文件项“${name}”位置越界。`);
     if (readU32(view, localOffset) !== 0x04034b50) throw new Error(`DOCX文件项“${name}”损坏。`);
     const localNameLength = readU16(view, localOffset + 26);
     const localExtraLength = readU16(view, localOffset + 28);
     const dataStart = localOffset + 30 + localNameLength + localExtraLength;
+    if (dataStart < 0 || dataStart + compressedSize > bytes.byteLength) throw new Error(`DOCX文件项“${name}”内容越界。`);
     const compressed = bytes.slice(dataStart, dataStart + compressedSize);
     let data: Uint8Array;
     if (method === 0) data = compressed;
     else if (method === 8) data = await inflateRaw(compressed);
     else throw new Error(`DOCX包含暂不支持的压缩方式：${method}`);
+    if (data.byteLength !== uncompressedSize) throw new Error(`DOCX文件项“${name}”解压长度不符。`);
+    if (entries.has(name)) throw new Error(`DOCX包含重复文件项：“${name}”。`);
     entries.set(name, data);
     cursor += 46 + fileNameLength + extraLength + commentLength;
   }
@@ -249,7 +268,7 @@ export async function sha256Hex(bytes: Uint8Array): Promise<string> {
 
 export async function importDocxRoundTrip(input: Uint8Array | ArrayBuffer): Promise<DocxRoundTripSession> {
   const originalBytes = input instanceof Uint8Array ? new Uint8Array(input) : new Uint8Array(input.slice(0));
-  const entries = await readZip(originalBytes);
+  const entries = await readZipEntries(originalBytes);
   const documentBytes = entries.get('word/document.xml');
   if (!documentBytes) throw new Error('DOCX缺少word/document.xml。');
   const documentXml = textDecoder.decode(documentBytes);
