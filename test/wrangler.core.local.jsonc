@@ -1,0 +1,26 @@
+{
+  "$schema": "../node_modules/wrangler/config-schema.json",
+  "name": "mojie-writing-studio-core-local-acceptance",
+  "compatibility_date": "2026-07-13",
+  "compatibility_flags": ["nodejs_compat"],
+  "main": "../dist/server/index.js",
+  "assets": {
+    "directory": "../dist/client",
+    "binding": "ASSETS",
+    "not_found_handling": "none"
+  },
+  "vars": {
+    "APP_ORIGIN": "http://127.0.0.1:8790",
+    "NODE_ENV": "development",
+    "OWNER_INITIALIZATION_KEY": "test-only-owner-initialization-key-not-for-production",
+    "LOCAL_DRAFT_KEK": "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA"
+  },
+  "d1_databases": [
+    {
+      "binding": "DB",
+      "database_name": "mojie-writing-studio-core-local-acceptance",
+      "database_id": "00000000-0000-0000-0000-000000000002",
+      "migrations_dir": "../migrations"
+    }
+  ]
+}

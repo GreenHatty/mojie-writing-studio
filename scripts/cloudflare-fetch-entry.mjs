@@ -4,8 +4,20 @@ import { handleMojieApi, handleMojieScheduled } from './mojie-api.mjs';
 import { handleMojieExtendedApi } from './mojie-extended-api.mjs';
 import { guardMojiePrivateContent } from './mojie-privacy-guard.mjs';
 
+function privateResponse(response) {
+  const headers = new Headers(response.headers);
+  headers.set('Cache-Control', 'no-store, private');
+  headers.set('X-Content-Type-Options', 'nosniff');
+  return new Response(response.body, { status: response.status, statusText: response.statusText, headers });
+}
+
 export default {
   async fetch(request, env, ctx) {
+    const pathname = new URL(request.url).pathname;
+    // The foundation routes are isolated while the legacy API remains in its
+    // compatibility window. This prevents two authorization systems from
+    // silently handling the same endpoint.
+    if (pathname.startsWith('/api/core/')) return privateResponse(await handler.fetch(request, env, ctx));
     const guardResponse = await guardMojiePrivateContent(request, env);
     if (guardResponse) return guardResponse;
     const authResponse = await handleMojieAuthApi(request, env);
@@ -14,7 +26,8 @@ export default {
     if (extendedResponse) return extendedResponse;
     const apiResponse = await handleMojieApi(request, env, ctx);
     if (apiResponse) return apiResponse;
-    return handler.fetch(request, env, ctx);
+    const response = await handler.fetch(request, env, ctx);
+    return request.mode === 'navigate' || request.destination === 'document' ? privateResponse(response) : response;
   },
   scheduled(_controller, env, ctx) {
     return handleMojieScheduled(env, ctx);
