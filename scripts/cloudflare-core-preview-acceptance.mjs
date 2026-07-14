@@ -7,6 +7,12 @@ const reportPath = process.env.MOJIE_CORE_ACCEPTANCE_REPORT || 'cloudflare-core-
 if (!origin || !initializationKey) throw new Error('MOJIE_PREVIEW_URL and OWNER_INITIALIZATION_KEY are required');
 
 function assert(condition, message) { if (!condition) throw new Error(message); }
+function failureDetail(result) {
+  const code = result?.body && typeof result.body === 'object' && typeof result.body.error === 'string'
+    ? result.body.error
+    : 'UNEXPECTED_RESPONSE';
+  return `HTTP ${result?.response?.status ?? 'unknown'} ${code}`;
+}
 function cookieHeader(response) {
   const values = typeof response.headers.getSetCookie === 'function' ? response.headers.getSetCookie() : [];
   return values.map((value) => value.split(';', 1)[0]).join('; ');
@@ -32,7 +38,10 @@ const initialized = await request('/api/core/auth/initialize', {
   method: 'POST', headers: { Origin: origin, 'Content-Type': 'application/json' },
   body: JSON.stringify({ key: initializationKey, account, password })
 });
-assert(initialized.response.status === 201 && initialized.body.user?.platformRole === 'OWNER', 'Core owner initialization failed');
+assert(
+  initialized.response.status === 201 && initialized.body.user?.platformRole === 'OWNER',
+  `Core owner initialization failed: ${failureDetail(initialized)}`
+);
 passed('single-owner core initialization');
 
 const login = await request('/api/core/auth/login', {
