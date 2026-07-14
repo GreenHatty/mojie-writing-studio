@@ -1,9 +1,10 @@
 'use client';
 
 import { useEffect, useMemo, useState } from 'react';
-import { buildMapSvg, layoutRelationshipGraph, type GraphEdge, type GraphNode } from '../lib/graph-model';
+import { buildMapSvg, type GraphEdge, type GraphNode } from '../lib/graph-model';
 import { detectCharacterLifeConflicts, detectTimelineConflicts, type ProjectEntity, type TimelineEvent } from '../lib/project-model';
 import type { WritingRepository } from '../lib/repository';
+import { StoryRelationshipGraph, StoryTimeline, TerrainMapWorkbench, type TerrainMarkerType } from './story-visual-canvases';
 
 type VisualSettingsPanelProps = {
   repository: Pick<WritingRepository, 'listEntities' | 'saveEntity'>;
@@ -134,11 +135,6 @@ export function VisualSettingsPanel({ repository, workId, chapters = [], readOnl
       })),
     [relationships]
   );
-  const positionedRelationshipNodes = useMemo(
-    () => layoutRelationshipGraph(relationshipNodes, 640, 420),
-    [relationshipNodes]
-  );
-
   const mapLayers = useMemo(() => ['全部图层', ...new Set(locations.map((entity) => fieldString(entity, 'layer') || '默认层'))], [locations]);
   const mapNodes = useMemo<GraphNode[]>(
     () => locations.filter((entity) => activeLayer === '全部图层' || (fieldString(entity, 'layer') || '默认层') === activeLayer).map((entity, index) => ({
@@ -273,6 +269,8 @@ export function VisualSettingsPanel({ repository, workId, chapters = [], readOnl
 
       {mode === 'timeline' ? (
         <div className="timeline-tool">
+          <StoryTimeline events={timelineEvents} names={new Map([...characters, ...factions, ...locations].map((entity) => [entity.id, entity.title]))} />
+          <details className="visual-editor-details"><summary>添加时间线事件</summary>
           <div className="visual-form-grid">
             <label><span>事件名称</span><input onChange={(event) => setEventForm((form) => ({ ...form, title: event.target.value }))} value={eventForm.title} /></label>
             <label><span>开始时间</span><input onChange={(event) => setEventForm((form) => ({ ...form, startAt: event.target.value }))} type="datetime-local" value={eventForm.startAt} /></label>
@@ -284,6 +282,7 @@ export function VisualSettingsPanel({ repository, workId, chapters = [], readOnl
             <label><input checked={eventForm.isForeshadowing} onChange={(event) => setEventForm((form) => ({ ...form, isForeshadowing: event.target.checked }))} type="checkbox" />这是伏笔事件</label>
             <button disabled={busy || readOnly} onClick={() => void addEvent()} type="button">保存事件</button>
           </div>
+          </details>
           {timelineConflicts.length ? <div className="timeline-conflicts"><strong>发现 {timelineConflicts.length} 项时间冲突</strong><ul>{timelineConflicts.map((conflict, index) => <li key={`${conflict.code}-${index}`}>{conflict.message}</li>)}</ul></div> : null}
           <ol className="timeline-list">{[...timelineEvents].sort((a, b) => a.startAt.localeCompare(b.startAt)).map((event) => <li key={event.id}><time>{event.startAt ? new Date(event.startAt).toLocaleString('zh-CN') : '时间未定'}</time><strong>{event.title}</strong><span>{event.locationId ? entityById.get(event.locationId)?.title : '地点未定'} · {event.characterIds.map((id) => entityById.get(id)?.title).filter(Boolean).join('、') || '人物未定'}</span></li>)}</ol>
         </div>
@@ -291,6 +290,8 @@ export function VisualSettingsPanel({ repository, workId, chapters = [], readOnl
 
       {mode === 'relationships' ? (
         <div className="relationship-tool">
+          <StoryRelationshipGraph edges={relationshipEdges} nodes={relationshipNodes} />
+          <details className="visual-editor-details"><summary>添加人物 / 势力关系</summary>
           <div className="visual-form-grid compact">
             <label><span>起点人物/势力</span><select onChange={(event) => setRelationForm((form) => ({ ...form, fromId: event.target.value }))} value={relationForm.fromId}><option value="">请选择</option>{[...characters, ...factions].map((entity) => <option key={entity.id} value={entity.id}>{entity.title}</option>)}</select></label>
             <label><span>终点人物/势力</span><select onChange={(event) => setRelationForm((form) => ({ ...form, toId: event.target.value }))} value={relationForm.toId}><option value="">请选择</option>{[...characters, ...factions].map((entity) => <option key={entity.id} value={entity.id}>{entity.title}</option>)}</select></label>
@@ -298,21 +299,17 @@ export function VisualSettingsPanel({ repository, workId, chapters = [], readOnl
             <label><span>强度 1-5</span><input max={5} min={1} onChange={(event) => setRelationForm((form) => ({ ...form, strength: Number(event.target.value) }))} type="number" value={relationForm.strength} /></label>
             <button disabled={busy || readOnly} onClick={() => void addRelationship()} type="button">保存关系</button>
           </div>
-          <svg className="relationship-svg" viewBox="0 0 640 420" role="img" aria-label="人物关系图">
-            {relationshipEdges.map((edge) => {
-              const from = positionedRelationshipNodes.find((node) => node.id === edge.fromId);
-              const to = positionedRelationshipNodes.find((node) => node.id === edge.toId);
-              if (!from || !to) return null;
-              return <g key={edge.id}><line x1={from.x} y1={from.y} x2={to.x} y2={to.y} stroke="currentColor" strokeWidth={Math.max(1, edge.strength ?? 2)} opacity="0.45" /><text x={(from.x + to.x) / 2} y={(from.y + to.y) / 2 - 5} textAnchor="middle">{edge.label}</text></g>;
-            })}
-            {positionedRelationshipNodes.map((node) => <g key={node.id}><circle cx={node.x} cy={node.y} r={30} /><text x={node.x} y={node.y + 4} textAnchor="middle">{node.label}</text></g>)}
-          </svg>
+          </details>
           <button className="visual-export" onClick={() => downloadSvg(buildMapSvg(relationshipNodes, relationshipEdges, { width: 640, height: 420, title: '人物关系图' }), '人物关系图.svg')} type="button">导出SVG</button>
         </div>
       ) : null}
 
       {mode === 'map' ? (
         <div className="map-tool">
+          <TerrainMapWorkbench items={locations.map((entity) => ({ id: entity.id, title: entity.title, x: fieldNumber(entity, 'x', 50) > 100 ? fieldNumber(entity, 'x', 50) / 6.4 : fieldNumber(entity, 'x', 50), y: fieldNumber(entity, 'y', 50) > 100 ? fieldNumber(entity, 'y', 50) / 4.2 : fieldNumber(entity, 'y', 50), markerType: fieldString(entity, 'markerType') || 'city', path: fieldStrings(entity, 'path') }))} onCreate={async (input) => {
+            await run(async () => { await repository.saveEntity(workId, { kind: 'location', title: input.title, fields: { x: input.x, y: input.y, markerType: input.markerType as TerrainMarkerType, path: input.path ?? [], layer: activeLayer === '全部图层' ? '默认层' : activeLayer } }); setStatus(`${input.title}已添加到地图。`); });
+          }} readOnly={readOnly} />
+          <details className="visual-editor-details"><summary>精确地点与区域参数</summary>
           <div className="visual-form-grid compact">
             <label><span>显示图层</span><select onChange={(event) => setActiveLayer(event.target.value)} value={activeLayer}>{mapLayers.map((layer) => <option key={layer} value={layer}>{layer}</option>)}</select></label>
             <label><span>地点名</span><input onChange={(event) => setLocationForm((form) => ({ ...form, title: event.target.value }))} value={locationForm.title} /></label>
@@ -331,6 +328,7 @@ export function VisualSettingsPanel({ repository, workId, chapters = [], readOnl
             <label><span>路线图层</span><input onChange={(event) => setRouteForm((form) => ({ ...form, layer: event.target.value }))} value={routeForm.layer} /></label>
             <button disabled={busy || readOnly} onClick={() => void addRoute()} type="button">添加路线</button>
           </div>
+          </details>
           <div className="map-svg-preview" dangerouslySetInnerHTML={{ __html: mapSvg }} />
           <button className="visual-export" onClick={() => downloadSvg(mapSvg, '作品地图.svg')} type="button">导出SVG</button>
         </div>

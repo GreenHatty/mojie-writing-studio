@@ -11,7 +11,6 @@ import {
   disableCoreBackupTarget,
   downloadCoreBackupObject,
   getCoreRankingTask,
-  importCoreRanking,
   listCoreBackups,
   listCorePublicationRecords,
   listCoreRankingSources,
@@ -31,6 +30,15 @@ import { prepareChapterForPublication, type PublicationPlatform } from '../lib/p
 type Tab = 'publication' | 'rankings' | 'backups';
 const platformLabel = { qidian: '起点中文网', fanqie: '番茄免费小说' } as const;
 const authorPortal = { qidian: 'https://write.qq.com/', fanqie: 'https://fanqienovel.com/writer/zone/' } as const;
+
+type RankingCatalogEntry = { key: string; platform: 'qidian' | 'fanqie'; listName: string; category: string; sourceUrl: string };
+function rankingCatalog(): RankingCatalogEntry[] {
+  const month = new Date().toISOString().slice(0, 7).replace('-', '');
+  const qidian = (category: string, catId: string): RankingCatalogEntry => ({ key: `qidian-yuepiao-${catId}`, platform: 'qidian', listName: '月票榜', category, sourceUrl: `https://m.qidian.com/rank/yuepiao/catid${catId}/${month}/` });
+  const fanqie = (category: string, gender: 0 | 1, categoryId: string): RankingCatalogEntry => ({ key: `fanqie-read-${gender}-${categoryId}`, platform: 'fanqie', listName: '阅读榜', category, sourceUrl: `https://fanqienovel.com/rank/${gender}_1_${categoryId}` });
+  return [qidian('全站', '-1'), qidian('玄幻', '21'), qidian('仙侠', '22'), qidian('都市', '4'), qidian('历史', '5'), qidian('科幻', '9'), qidian('悬疑灵异', '10'), qidian('诸天无限', '20109'),
+    fanqie('都市高武', 1, '1014'), fanqie('都市脑洞', 1, '262'), fanqie('传统玄幻', 1, '258'), fanqie('历史脑洞', 1, '272'), fanqie('科幻末世', 1, '8'), fanqie('悬疑灵异', 1, '751'), fanqie('青春甜宠', 0, '749'), fanqie('宫斗宅斗', 0, '246'), fanqie('豪门总裁', 0, '748'), fanqie('快穿', 0, '24'), fanqie('年代', 0, '79'), fanqie('女频悬疑', 0, '747')];
+}
 
 function errorText(error: unknown): string { return error instanceof Error ? error.message : '操作未完成。'; }
 function downloadBlob(blob: Blob, name: string) {
@@ -87,30 +95,34 @@ function RankingWorkspace({ csrf, isOwner }: { csrf: string; isOwner: boolean })
   const [sources, setSources] = useState<CoreRankingSource[]>([]); const [selectedSourceId, setSelectedSourceId] = useState(''); const [selectedRank, setSelectedRank] = useState(1);
   const [task, setTask] = useState<CoreRankingTask | null>(null); const [status, setStatus] = useState(''); const [busy, setBusy] = useState(false);
   const polling = useRef<AbortController | null>(null);
+  const catalog = useMemo(() => rankingCatalog(), []); const [catalogKey, setCatalogKey] = useState(catalog[0]!.key);
+  const selectedCatalog = catalog.find((entry) => entry.key === catalogKey) ?? catalog[0]!;
   const source = sources.find((item) => item.id === selectedSourceId) ?? sources[0]; const item = source?.latestSnapshot?.items.find((value) => value.rank === selectedRank) ?? source?.latestSnapshot?.items[0];
   const analysis = source && item ? analyzeSellingPoints(asLegacyItem(source, item)) : null;
   async function refresh(signal?: AbortSignal) { const next = await listCoreRankingSources(signal); setSources(next); setSelectedSourceId((current) => current && next.some((item) => item.id === current) ? current : next[0]?.id ?? ''); }
   useEffect(() => { const controller = new AbortController(); void refresh(controller.signal).catch((error) => { if (!controller.signal.aborted) setStatus(errorText(error)); }); return () => { controller.abort(); polling.current?.abort(); }; }, []);
-  async function addSource(form: HTMLFormElement) {
-    setBusy(true); try { const data = new FormData(form); await createCoreRankingSource({ platform: String(data.get('platform')) as 'qidian' | 'fanqie', listName: String(data.get('listName')), category: String(data.get('category')), sourceUrl: String(data.get('sourceUrl')), authorizationNote: String(data.get('authorizationNote')) }, csrf); form.reset(); await refresh(); setStatus('来源已保存；只有明确记录授权依据的公开 HTTPS 来源才可运行。'); } catch (error) { setStatus(errorText(error)); } finally { setBusy(false); }
-  }
-  async function importFile(file: File) {
-    if (!source) return; setBusy(true);
-    try { if (file.size > 2 * 1024 * 1024) throw new Error('榜单文件不能超过 2MB。'); const format = file.name.toLowerCase().endsWith('.csv') ? 'csv' : 'json'; const result = await importCoreRanking({ sourceId: source.id, format, content: await file.text(), rankingDate: new Date().toISOString().slice(0, 10) }, csrf); await refresh(); setStatus(`已导入 ${result.itemCount} 条公开榜单记录。`); } catch (error) { setStatus(errorText(error)); } finally { setBusy(false); }
+  async function ensureCatalogSource(): Promise<string> {
+    const existing = sources.find((item) => item.platform === selectedCatalog.platform && item.listName === selectedCatalog.listName && item.category === selectedCatalog.category);
+    if (existing) return existing.id;
+    const created = await createCoreRankingSource({ ...selectedCatalog, authorizationNote: 'owner-authorized-official-ranking-catalog' }, csrf);
+    await refresh();
+    return created;
   }
   async function runTask() {
     setBusy(true); setStatus(''); polling.current?.abort(); const controller = new AbortController(); polling.current = controller;
     try {
-      const created = await createCoreRankingTask(source?.id ?? null, csrf, controller.signal); let current = await getCoreRankingTask(created.taskId, controller.signal); setTask(current);
+      if (!isOwner) throw new Error('只有站点所有者可以更新实时榜单。');
+      const sourceId = await ensureCatalogSource(); setSelectedSourceId(sourceId);
+      const created = await createCoreRankingTask(sourceId, csrf, controller.signal); let current = await getCoreRankingTask(created.taskId, controller.signal); setTask(current);
       for (let attempt = 0; attempt < 45 && !['completed', 'partial', 'failed', 'cancelled'].includes(current.status); attempt += 1) { await new Promise((resolve) => window.setTimeout(resolve, 1_000)); current = await getCoreRankingTask(created.taskId, controller.signal); setTask(current); }
       if (!['completed', 'partial', 'failed', 'cancelled'].includes(current.status)) setStatus('任务仍在后台队列中；关闭面板不会取消任务。'); else { setStatus(current.status === 'completed' ? '榜单快照更新完成。' : `任务结束：${current.status}${current.error_code ? `（${current.error_code}）` : ''}`); await refresh(); }
     } catch (error) { if (!controller.signal.aborted) setStatus(errorText(error)); } finally { setBusy(false); }
   }
   return <section className="operations-section ranking-workspace">
-    <header><div><h3>公开平台榜单</h3><p>进入本标签后才读取来源和各来源最新一条成功快照；历史快照不会随工作台启动加载。</p></div>{source ? <label><span>来源</span><select onChange={(event) => { setSelectedSourceId(event.target.value); setSelectedRank(1); }} value={source.id}>{sources.map((item) => <option key={item.id} value={item.id}>{platformLabel[item.platform]} · {item.listName} · {item.category}</option>)}</select></label> : null}</header>
-    {isOwner ? <details><summary>管理员来源与手动导入</summary><form onSubmit={(event) => { event.preventDefault(); void addSource(event.currentTarget); }}><label><span>平台</span><select name="platform"><option value="qidian">起点</option><option value="fanqie">番茄</option></select></label><label><span>榜单名称</span><input defaultValue="综合榜" name="listName" /></label><label><span>分类</span><input defaultValue="全部" name="category" /></label><label><span>公开 HTTPS 来源</span><input name="sourceUrl" placeholder="https://…" required /></label><label><span>授权依据说明</span><input name="authorizationNote" required /></label><button disabled={busy} type="submit">保存来源</button></form>{source ? <label className="ranking-import"><span>导入脱敏 CSV/JSON</span><input accept=".csv,.json" disabled={busy} onChange={(event) => { const file = event.target.files?.[0]; if (file) void importFile(file); event.target.value = ''; }} type="file" /></label> : null}</details> : null}
+    <header><div><h3>实时平台榜单</h3><p>选择平台分类后创建后台读取任务；正文编辑不会等待榜单完成。</p></div></header>
+    <div className="ranking-live-picker"><label><span>平台与分类</span><select onChange={(event) => setCatalogKey(event.target.value)} value={catalogKey}>{catalog.map((entry) => <option key={entry.key} value={entry.key}>{platformLabel[entry.platform]} · {entry.listName} · {entry.category}</option>)}</select></label>{isOwner ? <button disabled={busy} onClick={() => void runTask()} type="button">读取最新榜单</button> : null}{source ? <label><span>已保存快照</span><select onChange={(event) => { setSelectedSourceId(event.target.value); setSelectedRank(1); }} value={source.id}>{sources.map((item) => <option key={item.id} value={item.id}>{platformLabel[item.platform]} · {item.listName} · {item.category}</option>)}</select></label> : null}</div>
     {source?.latestSnapshot ? <div className="ranking-snapshot"><div><h4>{source.latestSnapshot.rankingDate} · 前 {source.latestSnapshot.items.length}</h4><ol>{source.latestSnapshot.items.map((value) => <li key={`${value.rank}:${value.title}`}><button aria-current={value.rank === item?.rank} onClick={() => setSelectedRank(value.rank)} type="button"><strong>{value.rank}. {value.title}</strong><span>{value.author || '作者未公开'}{value.rankChange === null ? ' · 新上榜' : value.rankChange === 0 ? ' · 排名不变' : ` · ${value.rankChange > 0 ? '上升' : '下降'} ${Math.abs(value.rankChange)}`}</span></button></li>)}</ol></div>{analysis ? <article><h4>{item?.title} · 卖点结构推测</h4><dl><div><dt>书名结构</dt><dd>{analysis.titleStructure}</dd></div><div><dt>简介钩子</dt><dd>{analysis.blurbHook}</dd></div><div><dt>核心机制</dt><dd>{analysis.coreMechanism}</dd></div><div><dt>情绪预期</dt><dd>{analysis.coreEmotion}</dd></div><div><dt>标签组合</dt><dd>{analysis.tagCombination}</dd></div></dl><p>{analysis.disclaimer}</p></article> : null}</div> : <p className="operations-empty">尚无成功快照。解析失败、验证码、空榜单或无效跳转不会覆盖上次成功结果。</p>}
-    {isOwner && source ? <div className="operations-actions"><button disabled={busy} onClick={() => void runTask()} type="button">创建后台采集任务</button>{task && !['completed', 'partial', 'failed', 'cancelled'].includes(task.status) ? <button onClick={() => void cancelCoreRankingTask(task.id, csrf).then(() => setTask({ ...task, status: 'cancelled' }))} type="button">取消任务</button> : null}<span>{task ? `${task.status} · ${task.progress}%` : ''}</span></div> : null}
+    {isOwner && task ? <div className="operations-actions">{!['completed', 'partial', 'failed', 'cancelled'].includes(task.status) ? <button onClick={() => void cancelCoreRankingTask(task.id, csrf).then(() => setTask({ ...task, status: 'cancelled' }))} type="button">取消任务</button> : null}<span>{`${task.status} · ${task.progress}%`}</span></div> : null}
     <p role="status">{status}</p>
   </section>;
 }

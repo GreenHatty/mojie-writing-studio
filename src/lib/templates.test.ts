@@ -23,6 +23,16 @@ describe('filterTemplates', () => {
     expect(WRITING_TEMPLATES.some((item) => item.genre === '现言甜宠')).toBe(true);
     expect(WRITING_TEMPLATES.some((item) => item.length === '短故事')).toBe(true);
   });
+
+  it('uses genre-specific story engines instead of one duplicated formula', () => {
+    const genres = ['凡人流', '幕后流', '无限流', '历史穿越', '宫斗', '现言甜宠', '快穿'];
+    const selected = genres.map((genre) => WRITING_TEMPLATES.find((item) => item.genre === genre)!);
+    expect(new Set(selected.map((item) => item.storyFormula)).size).toBe(genres.length);
+    expect(selected.find((item) => item.genre === '凡人流')?.storyFormula).toContain('灵药');
+    expect(selected.find((item) => item.genre === '幕后流')?.mechanismLimits).toContain('马甲');
+    expect(selected.find((item) => item.genre === '宫斗')?.minimumWorldbuilding).toContain('品级权限');
+    expect(selected.find((item) => item.genre === '现言甜宠')?.commonMistakes.join('')).toContain('事业线');
+  });
 });
 
 describe('buildPlanningCard', () => {

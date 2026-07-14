@@ -8,7 +8,7 @@
   background: transparent;
   font: 600 11px "Microsoft YaHei", sans-serif;
 }
-.visual-settings-panel { display: grid; gap: 14px; margin-top: 14px; }
+.visual-settings-panel { display: grid; gap: 16px; min-width: 0; margin-top: 0; }
 .visual-mode-tabs { display: grid; grid-template-columns: repeat(3, 1fr); gap: 5px; }
 .visual-mode-tabs button { min-height: 32px; border: 1px solid var(--line); border-radius: 8px; color: var(--muted); background: transparent; font: 600 11px "Microsoft YaHei", sans-serif; }
 .visual-mode-tabs button[aria-selected="true"] { color: var(--accent); background: var(--accent-soft); }
@@ -41,7 +41,62 @@
 .route-form { margin-top: 10px; }
 .map-svg-preview { overflow: auto; }
 .visual-status { min-height: 20px; margin: 0; color: var(--muted); font: 10px/1.5 "Microsoft YaHei", sans-serif; }
+.visual-editor-details { padding: 12px; border: 1px solid var(--line); border-radius: 11px; background: color-mix(in srgb, var(--paper) 78%, transparent); }
+.visual-editor-details > summary { cursor: pointer; color: var(--accent); font: 700 12px "Microsoft YaHei", sans-serif; }
+.visual-editor-details[open] > summary { margin-bottom: 12px; }
+.story-timeline, .story-relationship, .terrain-workbench { display: grid; gap: 12px; padding: 14px; border: 1px solid var(--line); border-radius: 14px; background: var(--panel); }
+.story-timeline > header, .story-relationship > header, .terrain-workbench > header, .terrain-workbench > footer { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+.story-timeline > header > div:first-child, .story-relationship > header > div:first-child, .terrain-workbench > header > div:first-child { display: grid; gap: 3px; }
+.story-timeline header span, .story-relationship header span, .terrain-workbench header span, .terrain-workbench footer { color: var(--muted); font: 10px/1.5 "Microsoft YaHei", sans-serif; }
+.visual-view-switch { display: flex; gap: 5px; }
+.visual-view-switch button { min-height: 30px; padding: 0 9px; border: 1px solid var(--line); border-radius: 8px; color: var(--muted); background: transparent; font: 600 10px "Microsoft YaHei", sans-serif; }
+.visual-view-switch button[aria-pressed="true"] { border-color: var(--accent); color: var(--accent); background: var(--accent-soft); }
+.visual-empty { display: grid; place-items: center; gap: 4px; min-height: 180px; border: 1px dashed var(--line); border-radius: 11px; color: var(--muted); text-align: center; }
+.gantt-board { min-width: 620px; overflow: hidden; border: 1px solid var(--line); border-radius: 10px; background: var(--paper); }
+.gantt-axis { display: grid; grid-template-columns: repeat(3, 1fr); margin-left: 150px; padding: 7px 10px; border-bottom: 1px solid var(--line); color: var(--muted); font-size: 9px; }
+.gantt-axis span:nth-child(2) { text-align: center; }.gantt-axis span:last-child { text-align: right; }
+.gantt-row { display: grid; grid-template-columns: 150px minmax(460px, 1fr); min-height: 52px; border-top: 1px solid color-mix(in srgb, var(--line) 60%, transparent); }
+.gantt-row:first-of-type { border-top: 0; }
+.gantt-label { display: grid; align-content: center; gap: 3px; min-width: 0; padding: 7px 10px; border-right: 1px solid var(--line); }
+.gantt-label strong, .gantt-label span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }.gantt-label span { color: var(--muted); font-size: 9px; }
+.gantt-track { position: relative; background: repeating-linear-gradient(90deg, transparent 0 24.8%, color-mix(in srgb, var(--line) 45%, transparent) 25%); }
+.gantt-bar { position: absolute; top: 10px; display: flex; min-width: 26px; height: 32px; align-items: center; overflow: hidden; padding: 0 8px; border-radius: 7px; color: white; background: var(--accent); box-shadow: 0 4px 12px rgba(35,91,75,.18); }
+.gantt-bar[data-lane="1"] { background: #8b744e; }.gantt-bar[data-lane="2"] { background: #715d77; }.gantt-bar[data-lane="3"] { background: #4f7185; }
+.gantt-bar span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 9px; }
+.linear-story-axis { display: grid; margin: 0; padding: 0; list-style: none; }
+.linear-story-axis li { display: grid; grid-template-columns: 118px 22px minmax(0, 1fr); align-items: stretch; }
+.linear-story-axis time { padding: 12px 8px 12px 0; color: var(--muted); font-size: 9px; text-align: right; }
+.linear-story-axis .linear-dot { position: relative; width: 10px; height: 10px; align-self: start; margin: 14px auto 0; border: 2px solid var(--accent); border-radius: 50%; background: var(--paper); }
+.linear-story-axis .linear-dot::after { position: absolute; top: 9px; bottom: -58px; left: 2px; width: 2px; background: var(--line); content: ''; }
+.linear-story-axis li:last-child .linear-dot::after { display: none; }
+.linear-story-axis article { margin: 5px 0 8px; padding: 10px; border: 1px solid var(--line); border-radius: 9px; background: var(--paper); }
+.linear-story-axis article p { margin: 4px 0 0; color: var(--muted); font-size: 10px; }
+.relationship-canvas { touch-action: none; cursor: grab; }
+.relationship-canvas path:not([d^="M0"]) { fill: none; stroke: var(--accent); opacity: .42; }
+.relationship-canvas marker path { fill: var(--accent); }
+.relationship-node { cursor: grab; }.relationship-node:active { cursor: grabbing; }
+.relationship-node circle { fill: var(--paper); stroke: var(--accent); stroke-width: 2; filter: drop-shadow(0 4px 5px rgba(31,61,49,.15)); }
+.relationship-node text { pointer-events: none; fill: var(--ink); font: 10px "Microsoft YaHei", sans-serif; }
+.terrain-workbench > header label { display: grid; gap: 4px; color: var(--muted); font-size: 10px; }
+.terrain-workbench select { min-height: 34px; padding: 5px 8px; border: 1px solid var(--line); border-radius: 8px; color: var(--ink); background: var(--paper); }
+.terrain-toolbar { display: grid; grid-template-columns: repeat(9, minmax(52px, 1fr)); gap: 5px; overflow-x: auto; padding-bottom: 3px; }
+.terrain-toolbar button { display: grid; min-width: 52px; min-height: 52px; place-items: center; gap: 2px; padding: 5px; border: 1px solid var(--line); border-radius: 9px; color: var(--muted); background: var(--paper); }
+.terrain-toolbar button[aria-pressed="true"] { border-color: var(--accent); color: var(--accent); background: var(--accent-soft); }.terrain-toolbar button span { font-size: 9px; }
+.terrain-board { position: relative; overflow: hidden; aspect-ratio: 8 / 5; border: 1px solid var(--line); border-radius: 12px; background: #a9c9c0; box-shadow: inset 0 0 40px rgba(42,50,40,.16); touch-action: none; cursor: crosshair; }
+.terrain-board canvas, .terrain-paths { position: absolute; inset: 0; width: 100%; height: 100%; }.terrain-board canvas { filter: saturate(.82) contrast(.96); }
+.terrain-paths { pointer-events: none; overflow: visible; }.terrain-line { fill: none; stroke: #456f7d; stroke-linecap: round; stroke-linejoin: round; stroke-width: 1.3; vector-effect: non-scaling-stroke; filter: drop-shadow(0 1px 1px rgba(255,255,255,.6)); }
+.terrain-line.is-route { stroke: #765b3b; stroke-dasharray: 4 2; stroke-width: 1; }.terrain-line.is-forest, .terrain-line.is-mountain { stroke: transparent; }
+.terrain-brush-stamp { position: absolute; width: 24px; height: 24px; padding: 2px; transform: translate(-50%, -50%); color: #514a3f; stroke-width: 1.8; filter: drop-shadow(0 1px 1px rgba(247,243,225,.8)); pointer-events: none; }.terrain-brush-stamp.is-forest { color: #365f42; }
+.terrain-marker { position: absolute; display: grid; place-items: center; transform: translate(-50%, -50%); color: #263d35; filter: drop-shadow(0 2px 2px rgba(255,255,255,.8)); pointer-events: none; }
+.terrain-marker svg { width: 27px; height: 27px; padding: 4px; border: 1px solid rgba(42,57,47,.38); border-radius: 50%; background: rgba(247,243,225,.82); stroke-width: 2; }.terrain-marker span { max-width: 92px; margin-top: 2px; padding: 1px 4px; overflow: hidden; border-radius: 4px; background: rgba(247,243,225,.78); text-overflow: ellipsis; white-space: nowrap; font: 700 9px "Microsoft YaHei", sans-serif; }
+.terrain-marker.is-volcano { color: #8f3f31; }.terrain-marker.is-treasure { color: #927129; }.terrain-marker.is-city { color: #304e65; }.terrain-marker.is-draft { opacity: .7; }
+.map-tool > .map-svg-preview { display: none; }
 @media (max-width: 520px) {
   .visual-form-grid.compact { grid-template-columns: 1fr; }
   .visual-form-grid fieldset { grid-template-columns: 1fr; }
+  .story-timeline, .story-relationship, .terrain-workbench { padding: 10px; }
+  .story-timeline > header, .story-relationship > header, .terrain-workbench > header { align-items: stretch; flex-direction: column; }
+  .visual-view-switch { display: grid; grid-template-columns: repeat(3, 1fr); }
+  .gantt-board { min-width: 540px; }.gantt-row { grid-template-columns: 128px minmax(400px, 1fr); }.gantt-axis { margin-left: 128px; }
+  .terrain-board { min-height: 300px; aspect-ratio: 1 / 1; }
 }

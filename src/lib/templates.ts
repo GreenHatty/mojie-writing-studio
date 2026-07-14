@@ -88,9 +88,10 @@ function makeTemplate(seed: TemplateSeed): WritingTemplate {
   const platform = seed.platform ?? '通用';
   const length = seed.length ?? '长篇';
   const elements = [...new Set(seed.elements ?? [])];
-  const expectation = seed.expectation ?? `持续兑现“${seed.genre}”题材的核心情绪与成长反馈`;
-  const mechanism = seed.mechanism ?? '由人物选择、资源差和信息差形成持续推进机制';
-  const conflict = seed.conflict ?? '主角的明确目标与更强对手、规则限制及自身缺陷持续碰撞';
+  const blueprint = blueprintForGenre(seed.genre, length, elements);
+  const expectation = seed.expectation ?? blueprint.promise;
+  const mechanism = seed.mechanism ?? blueprint.mechanism;
+  const conflict = seed.conflict ?? blueprint.conflict;
 
   return {
     id: `${slug(platform)}-${slug(seed.audience)}-${slug(length)}-${slug(seed.genre)}`,
@@ -100,35 +101,35 @@ function makeTemplate(seed: TemplateSeed): WritingTemplate {
     length,
     genre: seed.genre,
     elements,
-    definition: `以${seed.genre}为主要类型承诺，围绕人物目标、阶段性冲突和可持续升级组织情节。`,
+    definition: `${seed.genre}不是标签拼盘：以“${blueprint.promise}”为读者契约，每个阶段都必须用可观察的选择与结果兑现。`,
     readingExpectation: expectation,
-    storyFormula: `处于不利位置的主角，因为${mechanism}获得行动机会，在${conflict}中持续作出有代价的选择。`,
-    initialSituation: '主角处于具体且可感知的不利处境，第一章即可观察到损失或倒计时。',
-    coreDesire: '主角最想守住、得到或证明的事，必须能转化为连续行动。',
-    externalGoal: '第一卷可完成的明确目标，以及完成后自然打开的更大目标。',
-    internalFlaw: '会导致错误选择的人格缺口，不能只写成无伤大雅的小毛病。',
+    storyFormula: blueprint.formula,
+    initialSituation: blueprint.opening[0] ?? '以可观察的损失开场。',
+    coreDesire: `把“${blueprint.promise}”落到主角要守住、得到或证明的一件具体事。`,
+    externalGoal: blueprint.volumeArc[0] ?? '完成第一阶段可核验目标。',
+    internalFlaw: `让主角在“${blueprint.conflict}”中反复做出有代价的错误选择，并通过事件修正。`,
     coreConflict: conflict,
     specialMechanism: mechanism,
-    mechanismLimits: '能力有消耗、冷却、信息盲区或道德代价，不能替代人物决策。',
-    resistance: '设置同层竞争者、规则维护者、利益集团和价值观对手四类阻力。',
-    minimumWorldbuilding: ['力量或职业规则', '资源获取与交换方式', '主要势力及利益关系', '普通人的日常生活'],
-    firstChapter: ['展示主角处境与欲望', '发生不可忽略的变化', '给出本章内的小目标', '用未解决的问题结束'],
-    firstThreeChapters: ['交代核心机制但保留限制', '让主角主动做出第一次选择', '兑现一次小反馈', '建立可持续矛盾'],
-    firstTenChapters: ['形成稳定主线', '引入关键盟友或对手', '完成一次阶段升级', '埋下第一卷核心伏笔'],
-    firstTwentyThousandWords: ['证明题材承诺', '让主角获得与付出同时增长', '形成清晰关系网', '给读者一个可复述的核心卖点'],
-    firstVolume: ['完成首个大目标', '回收至少一个前期伏笔', '使人物关系发生不可逆变化', '打开更高层级矛盾'],
-    midgameEscalation: ['从个人问题升级到组织或制度问题', '让旧能力在新环境中失效一部分', '迫使主角承担领导或选择责任'],
-    endgameEscalation: ['让终局冲突同时检验能力、关系与价值观', '回收核心伏笔', '避免只依靠突然出现的更强力量收尾'],
+    mechanismLimits: blueprint.limitation,
+    resistance: blueprint.conflict,
+    minimumWorldbuilding: blueprint.world,
+    firstChapter: blueprint.opening,
+    firstThreeChapters: [blueprint.opening[1] ?? '验证题材机制', blueprint.opening[2] ?? '作出第一次选择', `兑现一次“${blueprint.payoffs[0]}”`, `建立${seed.genre}的持续矛盾`],
+    firstTenChapters: [blueprint.volumeArc[0] ?? '完成阶段目标', blueprint.volumeArc[1] ?? '建立关系网', `至少兑现两次“${blueprint.payoffs.join(' / ')}”`, '埋下第一卷可回收线索'],
+    firstTwentyThousandWords: [`让读者能复述：${blueprint.promise}`, `证明推进机制：${mechanism}`, `展示限制：${blueprint.limitation}`, '形成一条可追踪的因果链而非事件清单'],
+    firstVolume: blueprint.volumeArc,
+    midgameEscalation: [`把“${blueprint.conflict}”从个人层推到组织层`, `让既有机制遭遇新限制：${blueprint.limitation}`, '使早期关系因利益变化重新站队'],
+    endgameEscalation: [`让终局同时检验：${blueprint.promise}`, '回收开篇的规则、选择与代价', '用主角最终选择证明人物弧光，而非突然加力量'],
     romancePlacement: seed.audience === '女频' ? '感情线应与主线互相改变选择，不作为独立装饰。' : '按题材需要配置，不能拖慢核心升级与行动线。',
-    emotionalPayoffs: ['能力成长', '身份变化', '关系确认或反转', '旧屈辱的有因果回收'],
-    chapterEndings: ['新问题出现', '信息差揭开一层', '人物作出不可撤回的选择', '目标完成但代价显现'],
+    emotionalPayoffs: blueprint.payoffs,
+    chapterEndings: [`${seed.genre}规则出现新例外`, '已知证据获得新意义', '人物作出不可撤回的题材选择', '阶段目标完成但专属代价显现'],
     titlePattern: [`身份或处境＋${seed.genre}核心机制`, '反差结果＋明确题材词', '具体目标＋异常规则'],
     blurbPattern: ['一句异常处境', '一句主角行动方式', '一句独特机制或限制', '一句最大悬念'],
     compatibleTags: [...elements, seed.genre, seed.audience],
-    commonMistakes: ['开篇只讲设定不发生事件', '机制无成本导致冲突失效', '配角只承担递话和夸赞功能', '升级只变数字不改变问题'],
-    homogenizationRisks: ['直接复刻热门书名句式', '把常见系统提示当作核心卖点', '人物目标与同类作品完全一致'],
-    innovationDirections: ['替换主角职业或社会位置', '改变资源获取伦理', '让机制与人物缺陷互相制约', '使用具有地域或行业细节的场景'],
-    selfCheck: ['第一章是否发生事件', '主角是否主动选择', '机制是否有限制', '十章内是否至少兑现一次承诺', '第一卷是否有可完成目标'],
+    commonMistakes: blueprint.pitfalls,
+    homogenizationRisks: [`只复制${seed.genre}热门书名和开场句式`, `把${elements.join('、') || '流行元素'}当装饰而不让它改变决策`, '主角目标、资源路径和对手结构完全沿用同类作品'],
+    innovationDirections: [`把主角放进${seed.genre}中少见但可查证的职业或地域`, `改变“${mechanism}”的资源伦理`, `让“${blueprint.limitation}”同时制约人物缺陷`, '用真实行业、生活或地方细节建立不可替代性'],
+    selfCheck: [`开篇是否实际执行：${blueprint.opening.join('；')}`, `十章内是否兑现：${blueprint.payoffs.join('；')}`, `限制“${blueprint.limitation}”是否真的造成损失`, `第一卷是否完成：${blueprint.volumeArc.join('；')}`],
     lastReviewedAt: REVIEW_DATE,
     sourceType: '公开平台分类、征文方向与通用叙事方法的原创整理',
     heatStatus: seed.heat ?? '稳定',
@@ -137,6 +138,15 @@ function makeTemplate(seed: TemplateSeed): WritingTemplate {
 }
 
 const SEEDS: TemplateSeed[] = [
+  { genre: '高武', audience: '男频', platform: '通用', elements: ['武道', '升级', '责任'] },
+  { genre: '修仙', audience: '男频', platform: '通用', elements: ['长生', '资源', '道途'] },
+  { genre: '种田流', audience: '不限', platform: '通用', elements: ['生产周期', '经营', '家园'] },
+  { genre: '系统文', audience: '不限', platform: '通用', elements: ['任务', '反馈', '限制'] },
+  { genre: '穿越', audience: '不限', platform: '通用', elements: ['文明差异', '适应', '新身份'] },
+  { genre: '重生', audience: '不限', platform: '通用', elements: ['旧记忆', '改命', '蝴蝶效应'] },
+  { genre: '脑洞', audience: '不限', platform: '番茄', elements: ['异常规则', '反常识', '连锁影响'] },
+  { genre: '同人', audience: '不限', platform: '通用', elements: ['原作空白', '规则尊重', '原创视角'] },
+  { genre: '权谋', audience: '不限', platform: '通用', elements: ['制度', '筹码', '多方博弈'] },
   { genre: '都市高武', audience: '男频', platform: '番茄', elements: ['系统', '群像', '全民觉醒'], expectation: '高密度成长反馈、战斗升级与群体关系推进', mechanism: '可量化但有限制的成长系统与团队协作', heat: '上升' },
   { genre: '都市高武', audience: '男频', platform: '起点', elements: ['无系统', '学院成长', '群像'], expectation: '严谨力量体系、学院竞争与长期世界升级', mechanism: '训练、资源争夺和认知突破共同驱动成长', heat: '上升' },
   { genre: '东方玄幻', audience: '男频', platform: '起点', elements: ['升级', '宗门', '世界谜团'] },
@@ -256,3 +266,4 @@ export function buildPlanningCard(template: WritingTemplate, selectedElements: s
     ]
   };
 }
+import { blueprintForGenre } from './genre-blueprints';
