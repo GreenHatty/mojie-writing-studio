@@ -131,6 +131,7 @@ jobs:
           node --check scripts/mojie-extended-api.mjs
           node --check scripts/mojie-privacy-guard.mjs
           node --check scripts/cloudflare-fetch-entry.mjs
+          node --check scripts/verify-deployed-assets.mjs
           node --check scripts/test-privacy-guard.mjs
           node scripts/test-privacy-guard.mjs
           npm audit --omit=dev --audit-level=moderate
@@ -188,6 +189,7 @@ jobs:
             echo "::error::Production smoke failed after propagation retries (root=$root_status session=$session_status draft=$draft_status cache=$cache_control_ok)"
             exit 1
           fi
+          MOJIE_DEPLOYMENT_URL="$DEPLOYMENT_URL" node scripts/verify-deployed-assets.mjs
 
       - name: Deployment summary
         env:

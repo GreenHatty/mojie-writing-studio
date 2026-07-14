@@ -163,6 +163,7 @@ jobs:
           node --check scripts/cloudflare-fetch-entry.mjs
           node --check scripts/cloudflare-preview-acceptance.mjs
           node --check scripts/cloudflare-core-preview-acceptance.mjs
+          node --check scripts/verify-deployed-assets.mjs
           node scripts/test-privacy-guard.mjs
           npm audit --omit=dev --audit-level=moderate
           npm test
@@ -227,6 +228,8 @@ jobs:
             fi
             sleep 2
           done
+
+          node scripts/verify-deployed-assets.mjs
 
           npx wrangler tail "$CLOUDFLARE_WORKER_NAME" --format json > cloudflare-worker-tail.log 2>&1 &
           tail_pid=$!

@@ -1,4 +1,6 @@
 import { describe, expect, it } from 'vitest';
+import { readFileSync } from 'node:fs';
+import { join } from 'node:path';
 import { createWorkerConfig, REQUIRED_WORKER_SECRETS } from './worker-config.mjs';
 
 describe('production Worker configuration', () => {
@@ -21,5 +23,11 @@ describe('production Worker configuration', () => {
     expect(() => createWorkerConfig({ CLOUDFLARE_D1_DATABASE_ID: 'database-id' })).toThrow(/APP_ORIGIN is required/u);
     expect(() => createWorkerConfig({ APP_ORIGIN: 'http://mojie.example', CLOUDFLARE_D1_DATABASE_ID: 'database-id' })).toThrow(/exact HTTPS origin/u);
     expect(() => createWorkerConfig({ APP_ORIGIN: 'https://mojie.example/path', CLOUDFLARE_D1_DATABASE_ID: 'database-id' })).toThrow(/exact HTTPS origin/u);
+  });
+
+  it('delegates versioned client chunks to the static asset binding', () => {
+    const fetchEntry = readFileSync(join(process.cwd(), 'scripts', 'cloudflare-fetch-entry.mjs'), 'utf8');
+    expect(fetchEntry).toContain("pathname.startsWith('/_next/static/')");
+    expect(fetchEntry).toContain('env.ASSETS.fetch(request)');
   });
 });

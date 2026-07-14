@@ -12,9 +12,25 @@ function privateResponse(response) {
   return new Response(response.body, { status: response.status, statusText: response.statusText, headers });
 }
 
+const PUBLIC_ASSET_PATHS = new Set([
+  '/mojie-icon.svg',
+  '/sw.js',
+  '/text-check-worker.js',
+  '/vinext-client-entry-manifest.json'
+]);
+
+function isPublicAssetRequest(request, pathname) {
+  if (request.method !== 'GET' && request.method !== 'HEAD') return false;
+  return pathname.startsWith('/_next/static/') || PUBLIC_ASSET_PATHS.has(pathname);
+}
+
 export default {
   async fetch(request, env, ctx) {
     const pathname = new URL(request.url).pathname;
+    // `run_worker_first` keeps the authenticated root and API under Worker
+    // control. Delegate only known public build assets to the static binding so
+    // Vinext client chunks never fall through to the application router.
+    if (isPublicAssetRequest(request, pathname)) return env.ASSETS.fetch(request);
     const operationsResponse = await handleMojieCoreOperationsApi(request, env, ctx);
     if (operationsResponse) return privateResponse(operationsResponse);
     // The foundation routes are isolated while the legacy API remains in its
