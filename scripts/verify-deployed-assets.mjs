@@ -17,24 +17,50 @@ async function fetchWithTimeout(url, timeoutMs = 12_000) {
   }
 }
 
-const root = await fetchWithTimeout(`${originValue}/`);
-if (root.status !== 200) throw new Error(`Root document returned HTTP ${root.status}`);
-const html = await root.text();
-const scriptPaths = [...html.matchAll(/<script\b[^>]*\bsrc=["']([^"']+)["']/giu)]
-  .map((match) => new URL(match[1], originValue))
-  .filter((url) => url.origin === origin.origin && url.pathname.startsWith('/_next/static/'));
-const uniqueScripts = [...new Map(scriptPaths.map((url) => [url.href, url])).values()].slice(0, 4);
-
-if (!uniqueScripts.length) throw new Error('Root document did not reference any versioned client script');
-
-for (const scriptUrl of uniqueScripts) {
-  const response = await fetchWithTimeout(scriptUrl.href);
-  const contentType = response.headers.get('content-type') || '';
-  if (response.status !== 200) throw new Error(`${scriptUrl.pathname} returned HTTP ${response.status}`);
-  if (!/javascript|ecmascript/iu.test(contentType)) {
-    throw new Error(`${scriptUrl.pathname} returned non-JavaScript content type ${contentType || '(missing)'}`);
+async function verifyDeployment() {
+  const root = await fetchWithTimeout(`${originValue}/`);
+  if (root.status !== 200) {
+    await root.body?.cancel();
+    throw new Error(`Root document returned HTTP ${root.status}`);
   }
-  await response.body?.cancel();
+  const html = await root.text();
+  const scriptPaths = [...html.matchAll(/<script\b[^>]*\bsrc=["']([^"']+)["']/giu)]
+    .map((match) => new URL(match[1], originValue))
+    .filter((url) => url.origin === origin.origin && url.pathname.startsWith('/_next/static/'));
+  const uniqueScripts = [...new Map(scriptPaths.map((url) => [url.href, url])).values()].slice(0, 4);
+
+  if (!uniqueScripts.length) throw new Error('Root document did not reference any versioned client script');
+
+  for (const scriptUrl of uniqueScripts) {
+    const response = await fetchWithTimeout(scriptUrl.href);
+    const contentType = response.headers.get('content-type') || '';
+    if (response.status !== 200) {
+      await response.body?.cancel();
+      throw new Error(`${scriptUrl.pathname} returned HTTP ${response.status}`);
+    }
+    if (!/javascript|ecmascript/iu.test(contentType)) {
+      await response.body?.cancel();
+      throw new Error(`${scriptUrl.pathname} returned non-JavaScript content type ${contentType || '(missing)'}`);
+    }
+    await response.body?.cancel();
+  }
+
+  return uniqueScripts.length;
 }
 
-process.stdout.write(`Client boot assets verified (${uniqueScripts.length} versioned scripts).\n`);
+const attempts = Math.max(1, Number.parseInt(process.env.MOJIE_ASSET_VERIFY_ATTEMPTS || '12', 10) || 12);
+let lastError;
+
+for (let attempt = 1; attempt <= attempts; attempt += 1) {
+  try {
+    const scriptCount = await verifyDeployment();
+    process.stdout.write(`Client boot assets verified (${scriptCount} versioned scripts, attempt ${attempt}/${attempts}).\n`);
+    lastError = null;
+    break;
+  } catch (error) {
+    lastError = error;
+    if (attempt < attempts) await new Promise((resolve) => setTimeout(resolve, 2_000));
+  }
+}
+
+if (lastError) throw lastError;
