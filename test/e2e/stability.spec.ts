@@ -38,6 +38,13 @@ async function installCoreApi(page: Page, userId: string) {
     }
     const workMatch = path.match(/^\/api\/core\/works\/([^/]+)$/u);
     if (workMatch && method === 'GET' && state.work) return json(route, { work: { id: state.work.id, title: state.work.title, kind: state.work.kind, status: 'DRAFT', updatedAt: '2026-07-14T00:00:00Z', role: 'WORK_OWNER', volumes: [{ id: state.work.volumeId, workId: state.work.id, title: '第一卷', position: 0, chapters: state.work.chapters }] } });
+    if (/^\/api\/core\/works\/[^/]+\/volumes$/u.test(path) && method === 'POST' && state.work) return json(route, { volume: { id: `volume-${state.work.chapters.length + 2}`, workId: state.work.id, title: (request.postDataJSON() as { title: string }).title, position: 1, chapters: [] } }, 201);
+    if (/^\/api\/core\/works\/[^/]+\/chapters$/u.test(path) && method === 'POST' && state.work) {
+      const input = request.postDataJSON() as { volumeId: string; title: string };
+      const chapter: ChapterState = { id: `chapter-${state.work.chapters.length + 1}`, workId: state.work.id, volumeId: input.volumeId, title: input.title, canonicalContent: { type: 'doc', schemaVersion: 1, content: [{ type: 'paragraph' }] }, plainText: '', revision: 0, wordCount: 0, position: state.work.chapters.length };
+      state.work.chapters.push(chapter);
+      return json(route, { chapter }, 201);
+    }
     const chapterMatch = path.match(/^\/api\/core\/chapters\/([^/]+)$/u);
     if (chapterMatch && state.work) {
       const chapter = state.work.chapters.find((item) => item.id === chapterMatch[1]);
@@ -88,6 +95,21 @@ test('creates, opens, edits and reconnects without an infinite loading state', a
   await expect(page.locator('html')).toHaveJSProperty('scrollWidth', await page.locator('html').evaluate((element) => element.clientWidth));
 });
 
+test('previews and imports a TXT file through the core repository', async ({ page }) => {
+  test.skip(test.info().project.name !== 'desktop');
+  await installCoreApi(page, 'file-import-desktop');
+  await page.goto('/');
+  await page.getByLabel('作品名称').fill('文件导入验收');
+  await page.getByRole('button', { name: '创建并开始写作' }).click();
+  await page.getByRole('button', { name: '写作工具箱' }).click();
+  await page.getByRole('button', { name: '文件与备份' }).click();
+  const picker = page.locator('input[type="file"][accept*=".txt"]').first();
+  await picker.setInputFiles({ name: '导入验收.txt', mimeType: 'text/plain', buffer: Buffer.from('第1章 导入章\n导入正文内容。', 'utf8') });
+  await expect(page.getByText(/已解析 1 卷、1 章/)).toBeVisible();
+  await page.getByRole('button', { name: '确认导入' }).click();
+  await expect(page.getByLabel('正文内容')).toContainText('导入正文内容。', { timeout: 15_000 });
+});
+
 test('uses responsive drawers and never starts the ranking module implicitly', async ({ page }) => {
   const state = await installCoreApi(page, `responsive-${test.info().project.name}`);
   await page.goto('/');
@@ -98,8 +120,14 @@ test('uses responsive drawers and never starts the ranking module implicitly', a
   if (test.info().project.name === 'tablet') {
     const contextPanel = page.getByRole('complementary', { name: '章节辅助信息' });
     await expect(contextPanel).toHaveCSS('position', 'fixed');
-    await page.getByRole('button', { name: '工具' }).click();
-    await expect(page.getByRole('button', { name: '工具' })).toHaveAttribute('aria-expanded', 'true');
+    await page.getByRole('button', { name: '章工具' }).click();
+    await expect(page.getByRole('button', { name: '章工具' })).toHaveAttribute('aria-expanded', 'true');
+  }
+  if (test.info().project.name === 'desktop') {
+    await page.getByRole('button', { name: '写作工具箱' }).click();
+    await expect(page.getByRole('dialog', { name: '写作工具箱' })).toBeVisible();
+    await expect(page.getByRole('heading', { name: '写作工具箱' })).toBeVisible();
+    await page.getByRole('button', { name: '关闭写作工具箱' }).click();
   }
   if (test.info().project.name === 'mobile-390') {
     const directory = page.getByRole('complementary', { name: '作品目录' });

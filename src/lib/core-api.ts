@@ -65,7 +65,7 @@ export async function listCoreWorks(signal?: AbortSignal): Promise<CoreWorkSumma
   return (await apiRequest<{ works: CoreWorkSummary[] }>('/api/core/works', { signal })).works;
 }
 
-export async function createCoreWork(input: { title: string; kind: CoreWorkKind }, csrf: string, signal?: AbortSignal): Promise<{ work: { id: string }; chapter: { id: string } }> {
+export async function createCoreWork(input: { title: string; kind: CoreWorkKind }, csrf: string, signal?: AbortSignal): Promise<{ work: { id: string }; volume: { id: string }; chapter: { id: string } }> {
   return apiRequest('/api/core/works', { method: 'POST', headers: mutationHeaders(csrf), body: jsonBody(input), signal });
 }
 

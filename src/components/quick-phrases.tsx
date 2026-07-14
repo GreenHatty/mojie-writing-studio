@@ -2,7 +2,8 @@
 
 import { useEffect, useState } from 'react';
 
-type Phrase = { id: string; shortcut: string; text: string };
+export type Phrase = { id: string; shortcut: string; text: string };
+export type QuickPhraseStore = { load(): Promise<Phrase[] | null>; save(phrases: Phrase[]): Promise<void> };
 
 const STORAGE_KEY = 'mojie:quick-phrases:v1';
 const DEFAULT_PHRASES: Phrase[] = [
@@ -28,15 +29,21 @@ function readPhrases(): Phrase[] {
   }
 }
 
-export function QuickPhrases() {
+export function QuickPhrases({ store }: { store?: QuickPhraseStore } = {}) {
   const [phrases, setPhrases] = useState<Phrase[]>(DEFAULT_PHRASES);
   const [shortcut, setShortcut] = useState('');
   const [text, setText] = useState('');
 
-  useEffect(() => setPhrases(readPhrases()), []);
+  useEffect(() => {
+    let active = true;
+    if (!store) { setPhrases(readPhrases()); return () => { active = false; }; }
+    void store.load().then((value) => { if (active && value) setPhrases(value); }).catch(() => undefined);
+    return () => { active = false; };
+  }, [store]);
 
   function persist(next: Phrase[]) {
     setPhrases(next);
+    if (store) { void store.save(next).catch(() => undefined); return; }
     try {
       window.localStorage.setItem(STORAGE_KEY, JSON.stringify(next));
     } catch {

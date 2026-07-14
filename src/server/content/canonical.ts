@@ -2,7 +2,11 @@ import type { CanonicalContent } from '../contracts';
 
 export const CURRENT_TIPTAP_SCHEMA_VERSION = 1;
 
-type TiptapNode = { type?: unknown; text?: unknown; content?: unknown[] };
+type TiptapNode = { type?: unknown; text?: unknown; content?: unknown[]; attrs?: unknown; marks?: unknown };
+
+const NODE_TYPES = new Set(['paragraph', 'text', 'heading', 'blockquote', 'bulletList', 'orderedList', 'listItem', 'codeBlock', 'horizontalRule', 'hardBreak']);
+const MARK_TYPES = new Set(['bold', 'italic', 'strike', 'code']);
+const BLOCK_CONTAINERS = new Set(['doc', 'blockquote', 'bulletList', 'orderedList', 'listItem']);
 
 export function emptyCanonicalContent(): CanonicalContent {
   return { type: 'doc', schemaVersion: CURRENT_TIPTAP_SCHEMA_VERSION, content: [{ type: 'paragraph' }] };
@@ -11,9 +15,29 @@ export function emptyCanonicalContent(): CanonicalContent {
 function normalizeNode(value: unknown): Record<string, unknown> | null {
   if (!value || typeof value !== 'object') return null;
   const node = value as TiptapNode;
-  if (typeof node.type !== 'string') return null;
+  if (typeof node.type !== 'string' || !NODE_TYPES.has(node.type)) return null;
   const normalized: Record<string, unknown> = { type: node.type };
   if (typeof node.text === 'string') normalized.text = node.text;
+  if (node.type === 'heading' && node.attrs && typeof node.attrs === 'object') {
+    const level = Number((node.attrs as { level?: unknown }).level);
+    if (level === 2 || level === 3) normalized.attrs = { level };
+  }
+  if (node.type === 'orderedList' && node.attrs && typeof node.attrs === 'object') {
+    const start = Number((node.attrs as { start?: unknown }).start);
+    if (Number.isInteger(start) && start > 0 && start < 1_000_000) normalized.attrs = { start };
+  }
+  if (node.type === 'codeBlock' && node.attrs && typeof node.attrs === 'object') {
+    const language = (node.attrs as { language?: unknown }).language;
+    if (typeof language === 'string' && language.length <= 40) normalized.attrs = { language };
+  }
+  if (node.type === 'text' && Array.isArray(node.marks)) {
+    const marks = node.marks.flatMap((mark) => {
+      if (!mark || typeof mark !== 'object') return [];
+      const type = (mark as { type?: unknown }).type;
+      return typeof type === 'string' && MARK_TYPES.has(type) ? [{ type }] : [];
+    });
+    if (marks.length) normalized.marks = marks;
+  }
   if (Array.isArray(node.content)) {
     const content = node.content.map(normalizeNode).filter((child): child is Record<string, unknown> => child !== null);
     if (content.length) normalized.content = content;
@@ -33,9 +57,10 @@ function textFromNode(value: unknown, includeBlockBreaks = false): string {
   if (!value || typeof value !== 'object') return '';
   const node = value as TiptapNode;
   if (typeof node.text === 'string') return node.text;
+  if (node.type === 'hardBreak' || node.type === 'horizontalRule') return '\n';
   if (!Array.isArray(node.content)) return '';
-  const separator = includeBlockBreaks && (node.type === 'doc' || node.type === 'paragraph' || node.type === 'heading' || node.type === 'listItem') ? '\n' : '';
-  return node.content.map((child) => textFromNode(child, true)).filter(Boolean).join(separator);
+  const separator = includeBlockBreaks && typeof node.type === 'string' && BLOCK_CONTAINERS.has(node.type) ? '\n' : '';
+  return node.content.map((child) => textFromNode(child, true)).join(separator);
 }
 
 export function canonicalPlainText(content: CanonicalContent): string {

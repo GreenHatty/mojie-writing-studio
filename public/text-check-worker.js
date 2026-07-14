@@ -88,10 +88,30 @@ function inspectText(text, options = {}) {
   return issues.sort((left, right) => left.start - right.start || left.severity.localeCompare(right.severity));
 }
 
+function findRepeatedPhrases(text, options = {}) {
+  const minimumLength = Math.max(2, options.minimumLength || 6);
+  const maximumLength = Math.max(minimumLength, Math.min(options.maximumLength || 12, 24));
+  const ignoredTerms = new Set(options.ignoredTerms || []);
+  const matches = new Map();
+  const scanLimit = Math.min(text.length, 50000);
+  for (let length = minimumLength; length <= maximumLength; length += 1) {
+    for (let start = 0; start + length <= scanLimit; start += 1) {
+      const phrase = text.slice(start, start + length);
+      if (!phrase.trim() || /^[\p{P}\p{S}\s]+$/u.test(phrase) || /[\r\n]/u.test(phrase)) continue;
+      if ([...ignoredTerms].some((term) => term && phrase.includes(term))) continue;
+      const current = matches.get(phrase) || [];
+      current.push({ start, end: start + length });
+      matches.set(phrase, current);
+    }
+  }
+  return [...matches.entries()].filter(([, occurrences]) => occurrences.length >= 2).map(([phrase, occurrences]) => ({ phrase, occurrences })).sort((left, right) => right.phrase.length - left.phrase.length || left.occurrences[0].start - right.occurrences[0].start).slice(0, 50);
+}
+
 self.addEventListener('message', (event) => {
-  const { id, text, options } = event.data || {};
+  const { id, text, options, repeatedOptions } = event.data || {};
   try {
-    self.postMessage({ id, issues: inspectText(String(text || ''), options || {}) });
+    const source = String(text || '');
+    self.postMessage({ id, issues: inspectText(source, options || {}), repeatedPhrases: findRepeatedPhrases(source, repeatedOptions || {}) });
   } catch (error) {
     self.postMessage({ id, error: error instanceof Error ? error.message : '后台检查失败' });
   }

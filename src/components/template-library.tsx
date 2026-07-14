@@ -4,6 +4,7 @@ import { useMemo, useState } from 'react';
 import {
   WRITING_TEMPLATES,
   filterTemplates,
+  type WritingTemplate,
   type TemplateAudience,
   type TemplateLength,
   type TemplatePlatform
@@ -11,7 +12,7 @@ import {
 
 const ALL = '全部';
 
-export function TemplateLibrary() {
+export function TemplateLibrary({ onUseTemplate }: { onUseTemplate?: (template: WritingTemplate) => void } = {}) {
   const [platform, setPlatform] = useState<TemplatePlatform | typeof ALL>(ALL);
   const [audience, setAudience] = useState<TemplateAudience | typeof ALL>(ALL);
   const [length, setLength] = useState<TemplateLength | typeof ALL>(ALL);
@@ -91,6 +92,7 @@ export function TemplateLibrary() {
                   <footer>
                     <span>审核日期：{template.lastReviewedAt}</span>
                     <span>热度状态：{template.heatStatus}</span>
+                    {onUseTemplate ? <button onClick={() => onUseTemplate(template)} type="button">用于当前作品</button> : null}
                   </footer>
                 </div>
               ) : null}
