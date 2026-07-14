@@ -7,6 +7,9 @@
       "es2022"
     ],
     "strict": true,
+    "types": [
+      "@cloudflare/workers-types"
+    ],
     "noEmit": true,
     "module": "esnext",
     "moduleResolution": "bundler",

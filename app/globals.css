@@ -241,3 +241,6 @@ input, select, textarea { color: var(--ink); }
   .editor-statusbar { gap: 8px 12px; }
   .save-state { width: 100%; margin-left: 0; }
 }
+
+.pwa-update-notice { position: fixed; right: 1rem; bottom: 1rem; z-index: 1000; max-width: min(28rem, calc(100vw - 2rem)); padding: .8rem 1rem; border: 1px solid var(--line); border-radius: .75rem; background: var(--panel); box-shadow: var(--shadow); color: var(--ink); font-size: .88rem; }
+.pwa-update-notice button { margin-left: .6rem; }

@@ -1,0 +1,14 @@
+{
+  "$schema": "../node_modules/wrangler/config-schema.json",
+  "name": "mojie-writing-studio-local-d1-acceptance",
+  "compatibility_date": "2026-07-13",
+  "main": "../scripts/cloudflare-fetch-entry.mjs",
+  "d1_databases": [
+    {
+      "binding": "DB",
+      "database_name": "mojie-writing-studio-local-d1-acceptance",
+      "database_id": "00000000-0000-0000-0000-000000000001",
+      "migrations_dir": "../migrations"
+    }
+  ]
+}

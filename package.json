@@ -9,6 +9,8 @@
     "start": "vinext start",
     "test": "vitest run",
     "test:e2e": "playwright test",
+    "test:d1-local": "node scripts/verify-local-d1.mjs",
+    "test:core-worker-local": "npm run build && node scripts/verify-core-local-worker.mjs",
     "test:worker-entry": "node scripts/verify-worker-entry.mjs",
     "test:watch": "vitest",
     "typecheck": "tsc --noEmit"
@@ -24,6 +26,7 @@
   },
   "devDependencies": {
     "@cloudflare/vite-plugin": "^1.44.0",
+    "@cloudflare/workers-types": "^5.20260711.1",
     "@playwright/test": "^1.61.1",
     "@testing-library/dom": "^10.4.1",
     "@testing-library/jest-dom": "^6.6.3",
