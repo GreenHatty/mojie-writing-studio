@@ -12,6 +12,7 @@ copyFileSync('scripts/mojie-api.mjs', 'dist/server/mojie-api.mjs');
 copyFileSync('scripts/ranking-adapters.mjs', 'dist/server/ranking-adapters.mjs');
 copyFileSync('scripts/backup-adapters.mjs', 'dist/server/backup-adapters.mjs');
 copyFileSync('scripts/mojie-core-operations-api.mjs', 'dist/server/mojie-core-operations-api.mjs');
+copyFileSync('scripts/core-premise-prompt.mjs', 'dist/server/core-premise-prompt.mjs');
 copyFileSync('scripts/mojie-extended-api.mjs', 'dist/server/mojie-extended-api.mjs');
 copyFileSync('scripts/mojie-privacy-guard.mjs', 'dist/server/mojie-privacy-guard.mjs');
 mkdirSync('dist/.openai', { recursive: true });

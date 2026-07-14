@@ -3,6 +3,18 @@ export type TemplateAudience = '男频' | '女频' | '不限';
 export type TemplateLength = '长篇' | '中短篇' | '短故事';
 export type TemplateHeat = '上升' | '稳定' | '观察' | '衰减';
 
+export type TemplateSuccessExample = {
+  caseTitle: string;
+  genrePromise: string;
+  openingProof: string;
+  protagonistAction: string;
+  mechanismAndCost: string;
+  firstArc: string;
+  payoffProof: string;
+  microInnovation: string;
+  whyItWorks: string;
+};
+
 export type WritingTemplate = {
   id: string;
   name: string;
@@ -39,6 +51,7 @@ export type WritingTemplate = {
   commonMistakes: string[];
   homogenizationRisks: string[];
   innovationDirections: string[];
+  successExample: TemplateSuccessExample;
   selfCheck: string[];
   lastReviewedAt: string;
   sourceType: string;
@@ -129,6 +142,17 @@ function makeTemplate(seed: TemplateSeed): WritingTemplate {
     commonMistakes: blueprint.pitfalls,
     homogenizationRisks: [`只复制${seed.genre}热门书名和开场句式`, `把${elements.join('、') || '流行元素'}当装饰而不让它改变决策`, '主角目标、资源路径和对手结构完全沿用同类作品'],
     innovationDirections: [`把主角放进${seed.genre}中少见但可查证的职业或地域`, `改变“${mechanism}”的资源伦理`, `让“${blueprint.limitation}”同时制约人物缺陷`, '用真实行业、生活或地方细节建立不可替代性'],
+    successExample: {
+      caseTitle: `原创示例策划：《${seed.genre}：${elements[0] ?? '破局'}之后》`,
+      genrePromise: `读者进来要看到“${blueprint.promise}”。示例把它落成一个可检验结果：主角必须完成“${blueprint.volumeArc[0] ?? '第一阶段目标'}”，失败会失去已经拥有的身份、资源或关系，而不是只喊口号。`,
+      openingProof: `开篇不解释设定大全，而是连续执行：${blueprint.opening.join('；')}。读者先看见题材机制怎样改变现实，再逐步理解规则。`,
+      protagonistAction: `主角主动选择“${blueprint.formula}”，这个选择会制造下一步问题；事件由行动和后果相连，而不是靠路人送任务。`,
+      mechanismAndCost: `核心机制是“${mechanism}”，但每次使用都必须碰到“${blueprint.limitation}”。优势负责制造爽点，限制负责让对手有反制空间。`,
+      firstArc: `第一阶段按“${blueprint.volumeArc.join(' → ')}”推进。每个节点都改变资源、认知或人物站队，卷末形成不可逆的新局面。`,
+      payoffProof: `阶段兑现依次落在“${blueprint.payoffs.join('、')}”。每次兑现前先让读者知道目标和阻力，兑现后立刻留下更高一层代价。`,
+      microInnovation: `不改掉${seed.genre}的核心阅读期待，而把主角放进“${seed.genre}中少见但可查证的职业或地域”，并让“${mechanism}”受到新的资源伦理约束；新鲜感来自具体运转方式，不来自临时反转。`,
+      whyItWorks: `它始终围绕${seed.genre}的专属承诺、推进机制和限制展开；开篇能验证、阶段能兑现、长线能升级，同时避开“${blueprint.pitfalls[0] ?? '只堆标签不改剧情'}”。`
+    },
     selfCheck: [`开篇是否实际执行：${blueprint.opening.join('；')}`, `十章内是否兑现：${blueprint.payoffs.join('；')}`, `限制“${blueprint.limitation}”是否真的造成损失`, `第一卷是否完成：${blueprint.volumeArc.join('；')}`],
     lastReviewedAt: REVIEW_DATE,
     sourceType: '公开平台分类、征文方向与通用叙事方法的原创整理',

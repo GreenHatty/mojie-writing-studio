@@ -93,9 +93,10 @@ input, select, textarea { color: var(--ink); }
 .authoring-drawer > footer button, .planning-card-editor .panel-section-heading button { padding: 8px 13px; border: 0; border-radius: 8px; color: white; background: var(--accent); cursor: pointer; }
 .authoring-drawer-loading { position: fixed; z-index: 81; inset: 0 0 0 auto; display: grid; width: min(860px, 92vw); place-items: center; background: var(--paper); }
 .planning-card-editor { display: grid; gap: 14px; }
-.planning-card-editor > label { display: grid; gap: 6px; }
-.planning-card-editor > label span { font-weight: 700; }
-.planning-card-editor > label small { color: var(--muted); line-height: 1.6; }
+.planning-card-field, .planning-card-field > label { display: grid; gap: 6px; }
+.planning-card-field > label span { font-weight: 700; }
+.planning-card-field > label small { color: var(--muted); line-height: 1.6; }
+.planning-card-field > .local-content-importer { justify-self: end; }
 .planning-card-editor textarea, .dictionary-grid textarea { min-height: 112px; padding: 10px; border: 1px solid var(--line); border-radius: 9px; color: var(--ink); background: var(--panel); resize: vertical; line-height: 1.7; }
 .dictionary-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px; margin-top: 14px; }
 .dictionary-grid label { display: grid; gap: 7px; color: var(--muted); font-size: 12px; }
@@ -130,10 +131,31 @@ input, select, textarea { color: var(--ink); }
 .worldbuilding-workspace textarea { min-height: 90px; resize: vertical; line-height: 1.6; }
 .entity-fields { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
 .entity-fields label:has(textarea) { grid-column: 1 / -1; }
+.importable-entity-field { display: grid; min-width: 0; gap: 6px; align-content: start; }
+.importable-entity-field > label { display: grid; gap: 6px; color: var(--muted); font-size: 12px; }
+.importable-entity-field.is-wide { grid-column: 1 / -1; }
+.importable-entity-field > .local-content-importer { justify-self: end; }
 .entity-delete-dialog { position: fixed; z-index: 91; top: 50%; left: 50%; width: min(520px, calc(100vw - 28px)); max-height: min(620px, calc(100vh - 40px)); overflow: auto; padding: 22px; border: 1px solid var(--line); border-radius: 16px; color: var(--ink); background: var(--paper); box-shadow: 0 22px 80px rgba(0,0,0,.3); transform: translate(-50%, -50%); }
 .entity-delete-dialog h2 { margin: 0 0 12px; }
 .entity-delete-dialog p, .entity-delete-dialog li { color: var(--muted); font-size: 12px; line-height: 1.6; }
 .entity-delete-dialog > div { display: flex; justify-content: flex-end; gap: 9px; }
+
+.help-tip { position: relative; display: inline-grid; width: 18px; height: 18px; flex: 0 0 18px; place-items: center; border: 1px solid color-mix(in srgb, var(--accent) 48%, var(--line)); border-radius: 50%; color: var(--accent); background: var(--paper); cursor: help; font: 700 11px/1 "Microsoft YaHei", sans-serif; vertical-align: middle; }
+.help-tip::after { position: absolute; z-index: 130; bottom: calc(100% + 9px); left: 50%; width: max-content; max-width: min(320px, calc(100vw - 40px)); padding: 8px 10px; border: 1px solid var(--line); border-radius: 8px; color: var(--ink); background: var(--paper); box-shadow: 0 10px 30px rgba(22,29,26,.18); content: attr(data-tooltip); opacity: 0; pointer-events: none; transform: translate(-50%, 5px); transition: opacity .14s ease, transform .14s ease; white-space: normal; font: 12px/1.55 "Microsoft YaHei", sans-serif; }
+.help-tip:hover::after, .help-tip:focus-visible::after { opacity: 1; transform: translate(-50%, 0); }
+.local-content-importer { position: relative; display: inline-flex; align-items: center; gap: 6px; min-width: 0; }
+.local-content-importer > button { min-height: 32px; padding: 5px 10px; border: 1px solid var(--line); border-radius: 8px; color: var(--accent); background: var(--paper); font: 600 11px "Microsoft YaHei", sans-serif; }
+.local-content-importer.is-compact > button { min-height: 26px; padding: 3px 7px; font-size: 10px; }
+.local-import-preview { position: absolute; z-index: 125; top: calc(100% + 7px); right: 0; display: grid; width: min(390px, calc(100vw - 36px)); gap: 7px; padding: 12px; border: 1px solid var(--line); border-radius: 11px; color: var(--ink); background: var(--paper); box-shadow: 0 16px 44px rgba(20,28,24,.2); font: 12px/1.55 "Microsoft YaHei", sans-serif; }
+.local-import-preview > span:not(.local-import-actions) { max-height: 108px; overflow: auto; color: var(--muted); white-space: pre-wrap; }
+.local-import-actions { display: flex; justify-content: flex-end; gap: 6px; }
+.local-import-actions button { min-height: 30px; padding: 4px 9px; border: 1px solid var(--line); border-radius: 7px; color: var(--ink); background: var(--panel); }
+.local-import-actions button:nth-child(2) { border-color: var(--accent); color: white; background: var(--accent); }
+.local-import-status { max-width: 240px; color: var(--muted); font-size: 10px; }
+.field-label-with-actions { display: flex; min-width: 0; align-items: center; justify-content: space-between; gap: 8px; }
+.field-label-with-actions > span:first-child { min-width: 0; }
+.chapter-heading-actions { flex-wrap: wrap; }
+.context-import-row { display: flex; justify-content: flex-end; padding: 8px 12px 0; }
 .entity-delete-dialog button { min-height: 36px; padding: 0 12px; border: 1px solid var(--line); border-radius: 8px; color: inherit; background: transparent; }
 .entity-delete-dialog button:last-child { color: white; border-color: #9f3b34; background: #9f3b34; }
 
@@ -281,8 +303,31 @@ input, select, textarea { color: var(--ink); }
 .template-detail dt, .lessons-panel dt { color: var(--accent); font: 600 10px "Microsoft YaHei", sans-serif; }
 .template-detail dd, .lessons-panel dd { margin: 0; font-size: 12px; line-height: 1.65; }
 .template-detail footer { display: flex; flex-wrap: wrap; gap: 8px 12px; margin-top: 12px; }
+.template-success-example { display: grid; gap: 11px; margin-top: 15px; padding: 14px; border: 1px solid color-mix(in srgb, var(--accent) 28%, var(--line)); border-radius: 12px; background: color-mix(in srgb, var(--accent-soft) 55%, var(--paper)); }
+.template-success-example > header { display: flex; align-items: flex-start; justify-content: space-between; gap: 10px; }
+.template-success-example header span { color: var(--accent); font: 700 10px "Microsoft YaHei", sans-serif; }
+.template-success-example h3 { margin: 4px 0 0; font-size: 16px; }
+.template-success-example ol { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 9px; margin: 0; padding: 0; list-style: none; }
+.template-success-example li { padding: 10px; border: 1px solid var(--line); border-radius: 9px; background: color-mix(in srgb, var(--paper) 86%, transparent); }
+.template-success-example li strong { color: var(--accent); font-size: 11px; }
+.template-success-example li p, .template-example-verdict { margin: 5px 0 0; color: var(--ink); font-size: 12px; line-height: 1.65; }
+.template-example-verdict { padding-top: 10px; border-top: 1px solid var(--line); }
+@media (max-width: 620px) { .template-success-example ol { grid-template-columns: 1fr; } }
 
 .lessons-panel article { margin-top: 16px; }
+.lesson-mode-tabs { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; margin-bottom: 14px; padding: 4px; border: 1px solid var(--line); border-radius: 10px; background: var(--panel); }
+.lesson-mode-tabs button { min-height: 36px; border: 0; border-radius: 8px; color: var(--muted); background: transparent; }
+.lesson-mode-tabs button[aria-selected="true"] { color: var(--accent); background: var(--accent-soft); font-weight: 700; }
+.premise-optimizer { display: grid; gap: 14px; }
+.premise-optimizer > header { display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; }
+.premise-optimizer h2 { margin: 3px 0 5px; font-size: 20px; }.premise-optimizer header p { margin: 0; color: var(--muted); line-height: 1.6; }
+.ai-provider-config { border: 1px solid var(--line); border-radius: 12px; background: var(--panel); }.ai-provider-config > summary { padding: 12px 14px; color: var(--accent); cursor: pointer; font-weight: 700; }
+.ai-config-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; padding: 0 14px 14px; }.ai-config-grid label { display: grid; gap: 5px; color: var(--muted); font-size: 11px; }.ai-config-grid input, .ai-config-grid select { min-height: 38px; padding: 7px 9px; border: 1px solid var(--line); border-radius: 8px; color: var(--ink); background: var(--paper); }
+.ai-key-field { grid-column: 1 / -1; }.ai-config-actions { display: flex; grid-column: 1 / -1; justify-content: flex-end; gap: 7px; }.ai-config-actions button, .premise-run-actions button, .premise-source-heading button, .premise-output button { min-height: 34px; padding: 6px 10px; border: 1px solid var(--line); border-radius: 8px; color: var(--ink); background: var(--paper); }.ai-config-actions button:first-child, .premise-run-actions button:first-child { border-color: var(--accent); color: white; background: var(--accent); }
+.premise-source-heading { display: flex; align-items: flex-end; justify-content: space-between; gap: 12px; }.premise-source-heading > div { display: flex; align-items: center; gap: 8px; }.premise-source-heading > div:first-child { display: grid; gap: 3px; }.premise-source-heading span { color: var(--muted); font-size: 10px; }
+.premise-optimizer > textarea { min-height: 240px; padding: 12px; border: 1px solid var(--line); border-radius: 11px; color: var(--ink); background: var(--paper); resize: vertical; line-height: 1.7; }.premise-run-actions { display: flex; gap: 8px; }
+.premise-output { border: 1px solid color-mix(in srgb, var(--accent) 35%, var(--line)); border-radius: 12px; background: color-mix(in srgb, var(--accent-soft) 45%, var(--paper)); }.premise-output > header { display: flex; align-items: center; justify-content: space-between; gap: 9px; padding: 10px 12px; border-bottom: 1px solid var(--line); }.premise-output > header div { display: flex; gap: 6px; }.premise-output > div { max-height: 520px; overflow: auto; padding: 14px; white-space: pre-wrap; line-height: 1.75; }
+@media (max-width: 620px) { .ai-config-grid { grid-template-columns: 1fr; }.ai-key-field, .ai-config-actions { grid-column: auto; }.premise-source-heading { align-items: stretch; flex-direction: column; }.premise-source-heading > div:last-child { flex-wrap: wrap; } }
 .lessons-panel article h2 { margin: 0; font-size: 20px; }
 .lessons-panel article > p { line-height: 1.75; }
 .lessons-panel article > section { display: grid; gap: 9px; margin-top: 14px; padding: 14px; border: 1px solid var(--line); border-radius: 12px; background: color-mix(in srgb, var(--paper) 74%, transparent); }
