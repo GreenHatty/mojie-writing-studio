@@ -211,12 +211,18 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
+          public_status=000
+          legacy_session_status=000
+          core_session_status=000
           for attempt in {1..45}; do
-            if curl --fail --silent --show-error "$MOJIE_PREVIEW_URL/api/site/public" | grep --quiet '"serverReady":true'; then
+            public_status="$(curl --silent --output /tmp/mojie-public.json --write-out '%{http_code}' "$MOJIE_PREVIEW_URL/api/site/public" || true)"
+            legacy_session_status="$(curl --silent --output /dev/null --write-out '%{http_code}' "$MOJIE_PREVIEW_URL/api/auth/session" || true)"
+            core_session_status="$(curl --silent --output /dev/null --write-out '%{http_code}' "$MOJIE_PREVIEW_URL/api/core/auth/session" || true)"
+            if [[ "$public_status" == "200" && "$legacy_session_status" == "200" && "$core_session_status" == "401" ]] && grep --quiet '"serverReady":true' /tmp/mojie-public.json; then
               break
             fi
             if [[ "$attempt" == "45" ]]; then
-              echo "Preview Worker did not become ready." >&2
+              echo "Preview Worker did not become consistent (public=$public_status legacy=$legacy_session_status core=$core_session_status)." >&2
               exit 1
             fi
             sleep 2

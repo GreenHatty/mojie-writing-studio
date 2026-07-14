@@ -164,18 +164,30 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
+          [[ "$DEPLOYMENT_URL" == "$APP_ORIGIN" ]]
+          ready=0
+          root_status=000
+          session_status=000
+          draft_status=000
+          cache_control_ok=0
           for attempt in {1..30}; do
-            if curl --fail --silent --show-error "$DEPLOYMENT_URL/" >/dev/null; then
+            root_status="$(curl --silent --output /dev/null --write-out '%{http_code}' "$DEPLOYMENT_URL/" || true)"
+            session_status="$(curl --silent --output /tmp/mojie-session.json --dump-header /tmp/mojie-session.headers --write-out '%{http_code}' "$DEPLOYMENT_URL/api/core/auth/session" || true)"
+            draft_status="$(curl --silent --output /dev/null --write-out '%{http_code}' "$DEPLOYMENT_URL/api/core/auth/draft-key" || true)"
+            cache_control_ok=0
+            if grep --ignore-case --quiet '^cache-control: no-store, private' /tmp/mojie-session.headers 2>/dev/null; then
+              cache_control_ok=1
+            fi
+            if [[ "$root_status" == "200" && "$session_status" == "401" && "$draft_status" == "401" && "$cache_control_ok" == "1" ]]; then
+              ready=1
               break
             fi
             sleep 2
           done
-          status="$(curl --silent --output /tmp/mojie-session.json --dump-header /tmp/mojie-session.headers --write-out '%{http_code}' "$DEPLOYMENT_URL/api/core/auth/session")"
-          [[ "$status" == "401" ]]
-          grep --ignore-case --quiet '^cache-control: no-store, private' /tmp/mojie-session.headers
-          draft_status="$(curl --silent --output /dev/null --write-out '%{http_code}' "$DEPLOYMENT_URL/api/core/auth/draft-key")"
-          [[ "$draft_status" == "401" ]]
-          [[ "$DEPLOYMENT_URL" == "$APP_ORIGIN" ]]
+          if [[ "$ready" != "1" ]]; then
+            echo "::error::Production smoke failed after propagation retries (root=$root_status session=$session_status draft=$draft_status cache=$cache_control_ok)"
+            exit 1
+          fi
 
       - name: Deployment summary
         env:
