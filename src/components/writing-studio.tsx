@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useMemo, useRef, useState, type CSSProperties } from 'react';
+import { lazy, Suspense, useEffect, useMemo, useRef, useState, type CSSProperties } from 'react';
 import { createChapterAutosaver, type ChapterAutosaver, type AutosaveState } from '../lib/autosave';
 import { countWritingCharacters, type ChapterSnapshot } from '../lib/writing';
 import {
@@ -13,13 +13,16 @@ import {
   type WritingRepository
 } from '../lib/repository';
 import { CreateWorkForm } from './create-work-form';
-import { ImportExportPanel } from './import-export-panel';
-import { LessonsPanel } from './lessons-panel';
-import { ProjectPanel } from './project-panel';
 import { RichTextEditor } from './rich-text-editor';
-import { TemplateLibrary } from './template-library';
-import { ToolsPanel } from './tools-panel';
 import { WorkspaceDashboard } from './workspace-dashboard';
+import { shortBrand, useSiteProfile } from './site-profile-context';
+import { AuxiliaryErrorBoundary } from './auxiliary-error-boundary';
+
+const ImportExportPanel = lazy(() => import('./import-export-panel').then((module) => ({ default: module.ImportExportPanel })));
+const LessonsPanel = lazy(() => import('./lessons-panel').then((module) => ({ default: module.LessonsPanel })));
+const ProjectPanel = lazy(() => import('./project-panel').then((module) => ({ default: module.ProjectPanel })));
+const TemplateLibrary = lazy(() => import('./template-library').then((module) => ({ default: module.TemplateLibrary })));
+const ToolsPanel = lazy(() => import('./tools-panel').then((module) => ({ default: module.ToolsPanel })));
 
 type WritingStudioProps = {
   repository?: WritingRepository;
@@ -54,6 +57,7 @@ function formatCount(value: number): string {
 }
 
 export function WritingStudio({ repository: suppliedRepository }: WritingStudioProps) {
+  const { siteName } = useSiteProfile();
   const [repository, setRepository] = useState<WritingRepository | null>(suppliedRepository ?? null);
   const [works, setWorks] = useState<WorkRecord[]>([]);
   const [activeWork, setActiveWork] = useState<WorkDetail | null>(null);
@@ -75,6 +79,7 @@ export function WritingStudio({ repository: suppliedRepository }: WritingStudioP
   const [settings, setSettings] = useState(SETTINGS_FALLBACK);
   const [todayCount, setTodayCount] = useState(0);
   const [draftNotice, setDraftNotice] = useState('');
+  const [workspaceError, setWorkspaceError] = useState('');
   const [editorReset, setEditorReset] = useState(0);
   const [mobilePanel, setMobilePanel] = useState<'none' | 'directory' | 'context'>('none');
   const autosaverRef = useRef<ChapterAutosaver | null>(null);
@@ -93,17 +98,18 @@ export function WritingStudio({ repository: suppliedRepository }: WritingStudioP
     const storage: WritingRepository = repository;
     let cancelled = false;
     async function bootstrap() {
-      const [workRecords, loadedSettings, writtenToday] = await Promise.all([
-        storage.listWorks(),
-        storage.getSettings(),
-        storage.getTodayWritingCount(today())
-      ]);
-      if (cancelled) return;
-      setWorks(workRecords);
-      setSettings(loadedSettings);
-      setTodayCount(writtenToday);
-      setOnline(typeof navigator === 'undefined' ? true : navigator.onLine);
-      setLoading(false);
+      try {
+        const [workRecords, loadedSettings, writtenToday] = await Promise.all([
+          storage.listWorks(), storage.getSettings(), storage.getTodayWritingCount(today())
+        ]);
+        if (cancelled) return;
+        setWorks(workRecords); setSettings(loadedSettings); setTodayCount(writtenToday);
+        setOnline(typeof navigator === 'undefined' ? true : navigator.onLine);
+      } catch (error) {
+        if (!cancelled) setWorkspaceError(error instanceof Error ? error.message : '本地写作空间打开失败。');
+      } finally {
+        if (!cancelled) setLoading(false);
+      }
     }
     void bootstrap();
     return () => {
@@ -205,10 +211,13 @@ export function WritingStudio({ repository: suppliedRepository }: WritingStudioP
     setOpeningWork(true);
     try {
       const work = await repository.getWork(workId);
+      if (!work) throw new Error('作品不存在或本地数据暂时不可读。');
       setActiveWork(work);
       setActiveChapterId(work?.volumes[0]?.chapters[0]?.id ?? null);
       setRightPanel('note');
       setSearch('');
+    } catch (error) {
+      setWorkspaceError(error instanceof Error ? error.message : '作品打开失败。');
     } finally {
       setOpeningWork(false);
     }
@@ -227,6 +236,8 @@ export function WritingStudio({ repository: suppliedRepository }: WritingStudioP
       setActiveWork(work);
       setActiveChapterId(created.chapter.id);
       setRightPanel('note');
+    } catch (error) {
+      setWorkspaceError(error instanceof Error ? error.message : '作品创建失败，请重试。');
     } finally {
       setCreating(false);
     }
@@ -316,6 +327,13 @@ export function WritingStudio({ repository: suppliedRepository }: WritingStudioP
   }
 
   if (loading || !repository) return <main className="app-loading">正在打开你的写作台…</main>;
+  if (workspaceError && !activeWork) return (
+    <main className="recovery-page" role="alert">
+      <h1>写作空间暂时无法打开</h1><p>{workspaceError}</p>
+      <div><button onClick={() => window.location.reload()} type="button">重试</button><button onClick={() => setWorkspaceError('')} type="button">返回工作台</button></div>
+      <p>不会删除或重建本地数据库。若其他标签页正在使用本站，请关闭后再重试。</p>
+    </main>
+  );
 
   if (!activeWork && works.length === 0) {
     return (
@@ -370,7 +388,7 @@ export function WritingStudio({ repository: suppliedRepository }: WritingStudioP
       <header className="studio-topbar">
         <button aria-label="返回工作台" className="brand-lockup" onClick={() => void returnToDashboard()} type="button">
           <span className="brand-mark">墨</span>
-          <span>墨界</span>
+          <span>{shortBrand(siteName)}</span>
         </button>
         <div className="work-identity">
           <span>{activeWork.kind === 'long' ? '长篇小说' : activeWork.kind === 'short' ? '短篇小说' : '随笔'}</span>
@@ -520,11 +538,15 @@ export function WritingStudio({ repository: suppliedRepository }: WritingStudioP
             )}
           </section>
         ) : null}
-        {rightPanel === 'project' ? <ProjectPanel repository={repository} workId={activeWork.id} /> : null}
-        {rightPanel === 'tools' ? <ToolsPanel text={livePlainText} /> : null}
-        {rightPanel === 'templates' ? <TemplateLibrary /> : null}
-        {rightPanel === 'lessons' ? <LessonsPanel /> : null}
-        {rightPanel === 'export' ? <ImportExportPanel work={activeWork} /> : null}
+        {rightPanel !== 'note' && rightPanel !== 'versions' ? (
+          <AuxiliaryErrorBoundary title="辅助工具"><Suspense fallback={<p role="status">正在载入辅助模块…</p>}>
+            {rightPanel === 'project' ? <ProjectPanel repository={repository} workId={activeWork.id} /> : null}
+            {rightPanel === 'tools' ? <ToolsPanel text={livePlainText} /> : null}
+            {rightPanel === 'templates' ? <TemplateLibrary /> : null}
+            {rightPanel === 'lessons' ? <LessonsPanel /> : null}
+            {rightPanel === 'export' ? <ImportExportPanel work={activeWork} /> : null}
+          </Suspense></AuxiliaryErrorBoundary>
+        ) : null}
       </aside>
     </main>
   );

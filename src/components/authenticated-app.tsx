@@ -6,6 +6,7 @@ import { createWritingRepository } from '../lib/repository';
 import { AdminPanel } from './admin-panel';
 import { PwaRegistration } from './pwa-registration';
 import { WritingStudio } from './writing-studio';
+import { SiteProfileProvider, useSiteProfile } from './site-profile-context';
 
 type SessionResponse = {
   authenticated: boolean;
@@ -14,6 +15,7 @@ type SessionResponse = {
 };
 
 type AuthMode = 'login' | 'invite' | 'bootstrap';
+type AppBootState = 'booting' | 'checking-session' | 'opening-local-db' | 'ready' | 'offline-ready' | 'read-only-recovery' | 'authentication-required' | 'blocked' | 'failed';
 
 type PublicSiteResponse = {
   profile: { siteName: string; defaultInviteHours: number; recycleRetentionDays: number };
@@ -25,12 +27,13 @@ function initialMode(): AuthMode {
   return new URLSearchParams(window.location.search).has('invite') ? 'invite' : 'login';
 }
 
-function shortBrand(siteName: string): string {
-  return siteName.split('·')[0]?.trim() || siteName.trim() || '墨界';
+export function AuthenticatedApp() {
+  return <SiteProfileProvider><AuthenticatedAppContent /></SiteProfileProvider>;
 }
 
-export function AuthenticatedApp() {
+function AuthenticatedAppContent() {
   const [session, setSession] = useState<SessionResponse | null>(null);
+  const [bootState, setBootState] = useState<AppBootState>('booting');
   const [mode, setMode] = useState<AuthMode>(initialMode);
   const [email, setEmail] = useState(() => typeof window === 'undefined' ? '' : new URLSearchParams(window.location.search).get('email') || '');
   const [password, setPassword] = useState('');
@@ -44,48 +47,47 @@ export function AuthenticatedApp() {
   const [inviteEmail, setInviteEmail] = useState('');
   const [inviteRole, setInviteRole] = useState('writer');
   const [createdInvite, setCreatedInvite] = useState<{ token: string; expiresAt: string; email: string } | null>(null);
-  const [siteName, setSiteName] = useState('墨界·私人网文创作台');
-  const [defaultInviteHours, setDefaultInviteHours] = useState(72);
+  const { siteName, setSiteName, defaultInviteHours, setDefaultInviteHours } = useSiteProfile();
 
   const canInvite = session?.user?.globalRole === 'owner' || session?.user?.globalRole === 'admin';
   const canAdmin = canInvite;
   const repository = useMemo(() => session?.user
-    ? createWritingRepository({ databaseName: `mojie-writing-studio:${session.user.id}`, ownerId: session.user.id })
+    ? createWritingRepository({
+        databaseName: `mojie-writing-studio:${session.user.id}`,
+        ownerId: session.user.id,
+        onLifecycleState(state) {
+          queueMicrotask(() => setBootState(state === 'ready' ? 'ready' : state === 'blocked' ? 'blocked' : state === 'upgrade-failed' ? 'read-only-recovery' : state === 'opening' || state === 'upgrading' ? 'opening-local-db' : state === 'versionchange' ? 'blocked' : 'failed'));
+        }
+      })
     : null, [session?.user]);
 
-  async function refreshSession() {
+  useEffect(() => () => repository?.close(), [repository]);
+
+  async function refreshSession(signal?: AbortSignal) {
+    setBootState('checking-session');
     try {
-      const next = await apiRequest<SessionResponse>('/api/auth/session');
+      const next = await apiRequest<SessionResponse>('/api/auth/session', { signal });
       setSession(next);
+      setBootState(next.authenticated ? 'opening-local-db' : 'authentication-required');
       setStatus('');
     } catch (error) {
-      setSession({ authenticated: false, user: null, serverReady: false });
+      if (signal?.aborted) return;
+      setBootState(typeof navigator !== 'undefined' && !navigator.onLine ? 'offline-ready' : 'failed');
       setStatus(error instanceof Error ? error.message : '无法连接身份验证服务。');
     }
   }
 
   useEffect(() => {
+    const controller = new AbortController();
     void Promise.all([
-      refreshSession(),
-      apiRequest<PublicSiteResponse>('/api/site/public').then((response) => {
+      refreshSession(controller.signal),
+      apiRequest<PublicSiteResponse>('/api/site/public', { signal: controller.signal }).then((response) => {
         setSiteName(response.profile.siteName || '墨界·私人网文创作台');
         setDefaultInviteHours(response.profile.defaultInviteHours || 72);
       }).catch(() => undefined)
     ]);
+    return () => controller.abort();
   }, []);
-
-  useEffect(() => {
-    document.title = siteName;
-    const updateBrand = () => {
-      for (const element of document.querySelectorAll<HTMLElement>('.brand-lockup > span:last-child')) {
-        element.textContent = shortBrand(siteName);
-      }
-    };
-    updateBrand();
-    const observer = new MutationObserver(updateBrand);
-    observer.observe(document.body, { childList: true, subtree: true });
-    return () => observer.disconnect();
-  }, [siteName]);
 
   async function submitAuth() {
     setBusy(true);
@@ -137,7 +139,15 @@ export function AuthenticatedApp() {
     }
   }
 
-  if (!session) return <main className="auth-loading">正在验证受邀身份…</main>;
+  if (!session && ['failed', 'offline-ready', 'blocked', 'read-only-recovery'].includes(bootState)) return (
+    <main className="recovery-page" role="alert">
+      <h1>{bootState === 'blocked' ? '本地写作空间被其他标签页占用' : bootState === 'offline-ready' ? '当前网络不可用' : '写作台启动失败'}</h1>
+      <p>{status || '启动流程没有完成，但不会删除本地作品。'}</p>
+      <div><button onClick={() => void refreshSession()} type="button">重试</button><button onClick={() => window.location.assign('/')} type="button">返回工作台</button></div>
+      <p>离线草稿需要先由同一账号完成身份解锁；无法确认身份时不会打开其他用户的本地数据。</p>
+    </main>
+  );
+  if (!session) return <main className="auth-loading">{bootState === 'checking-session' ? '正在验证受邀身份…' : '正在启动私人写作台…'}</main>;
 
   if (!session.authenticated || !session.user) {
     return (

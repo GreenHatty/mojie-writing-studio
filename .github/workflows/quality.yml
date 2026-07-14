@@ -31,6 +31,7 @@ jobs:
         run: |
           node --check scripts/mojie-auth-api.mjs
           node --check scripts/mojie-api.mjs
+          node --check scripts/ranking-adapters.mjs
           node --check scripts/mojie-extended-api.mjs
           node --check scripts/mojie-privacy-guard.mjs
           node --check scripts/cloudflare-fetch-entry.mjs
@@ -64,6 +65,19 @@ jobs:
         with:
           name: typecheck-diagnostics
           path: typecheck.log
+          if-no-files-found: ignore
+      - name: Install browser for E2E
+        run: npx playwright install --with-deps chromium
+      - name: Browser E2E and responsive regression
+        run: npm run test:e2e
+      - name: Upload browser diagnostics
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: browser-e2e-diagnostics
+          path: |
+            test-results
+            playwright-report
           if-no-files-found: ignore
       - name: Production build
         shell: bash

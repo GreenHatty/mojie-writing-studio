@@ -28,12 +28,19 @@ class CookieClient {
     if (method !== 'GET' && method !== 'HEAD') headers.set('origin', baseUrl);
     if (options.json !== undefined) headers.set('content-type', 'application/json');
 
-    const response = await fetch(`${baseUrl}${path}`, {
-      method,
-      headers,
-      body: options.json !== undefined ? JSON.stringify(options.json) : options.body,
-      redirect: 'manual'
-    });
+    let response;
+    for (let attempt = 0; attempt < 6; attempt += 1) {
+      response = await fetch(`${baseUrl}${path}`, {
+        method,
+        headers,
+        body: options.json !== undefined ? JSON.stringify(options.json) : options.body,
+        redirect: 'manual'
+      });
+      if (method !== 'GET' || ![404, 502, 503].includes(response.status) || attempt === 5) break;
+      await response.body?.cancel();
+      await new Promise((resolve) => setTimeout(resolve, 2_000));
+    }
+    if (!response) throw new Error(`${this.name} ${method} ${path} 未收到响应。`);
 
     const setCookies = typeof response.headers.getSetCookie === 'function'
       ? response.headers.getSetCookie()
@@ -197,8 +204,15 @@ if (rankingSourceUrl) {
       enabled: true
     }
   }, [201]);
-  const rankingRun = await owner.json('/api/rankings/run', { method: 'POST', json: {} });
-  assert(rankingRun.successes >= 1 && rankingRun.failures.length === 0, `授权榜单实时抓取失败：${JSON.stringify(rankingRun.failures)}`);
+  const rankingRun = await owner.json('/api/rankings/tasks', { method: 'POST', json: {} }, [202]);
+  assert(rankingRun.status === 'queued' && rankingRun.taskId, '榜单接口未返回202后台任务。');
+  let rankingTask;
+  for (let attempt = 0; attempt < 30; attempt += 1) {
+    rankingTask = (await owner.json(`/api/rankings/tasks/${rankingRun.taskId}`)).task;
+    if (['completed', 'partial', 'failed', 'cancelled'].includes(rankingTask.status)) break;
+    await new Promise((resolve) => setTimeout(resolve, 1000));
+  }
+  assert(rankingTask?.status === 'completed', `授权榜单后台抓取失败：${JSON.stringify(rankingTask)}`);
   passed('授权排行榜实时抓取', { liveCollection: true });
 } else {
   passed('排行榜域名白名单与授权记录校验', { liveCollection: 'skipped-no-authorized-url' });

@@ -9,7 +9,7 @@ if (!/export\s+default\s+\{[\s\S]*?fetch\s*\(/.test(entry)) {
 if (!/scheduled\s*\(/.test(entry)) {
   throw new Error('Expected Worker entry to export a scheduled handler for rankings and backups.');
 }
-for (const modulePath of ['dist/server/mojie-auth-api.mjs', 'dist/server/mojie-api.mjs', 'dist/server/mojie-extended-api.mjs', 'dist/server/mojie-privacy-guard.mjs']) {
+for (const modulePath of ['dist/server/mojie-auth-api.mjs', 'dist/server/mojie-api.mjs', 'dist/server/mojie-extended-api.mjs', 'dist/server/mojie-privacy-guard.mjs', 'dist/server/ranking-adapters.mjs']) {
   if (!existsSync(modulePath)) throw new Error(`Expected Worker API module at ${modulePath}.`);
 }
 
@@ -22,8 +22,12 @@ if (authApi.includes('iterations: 310_000')) {
 }
 
 const api = readFileSync('dist/server/mojie-api.mjs', 'utf8');
-for (const requiredCapability of ['rankingRoutes', 'backupRoutes', 'handleMojieScheduled']) {
+for (const requiredCapability of ['rankingRoutes', 'processRankingTask', "status: 'queued' }, 202", 'backupRoutes', 'handleMojieScheduled']) {
   if (!api.includes(requiredCapability)) throw new Error(`Expected core API bundle to include ${requiredCapability}.`);
+}
+const rankingAdapters = readFileSync('dist/server/ranking-adapters.mjs', 'utf8');
+for (const requiredCapability of ['QidianRankingAdapterV1', 'FanqieRankingAdapterV1', 'ranking_response_too_large', 'ranking_redirect_rejected']) {
+  if (!rankingAdapters.includes(requiredCapability)) throw new Error(`Expected ranking adapter bundle to include ${requiredCapability}.`);
 }
 
 const extendedApi = readFileSync('dist/server/mojie-extended-api.mjs', 'utf8');
