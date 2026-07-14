@@ -38,7 +38,7 @@ export type TimelineEvent = ProjectEntity & {
 };
 
 export type TimelineConflict = {
-  code: 'invalid-range' | 'overlapping-location';
+  code: 'invalid-range' | 'overlapping-location' | 'predecessor-order' | 'before-birth' | 'after-death';
   message: string;
   eventIds: string[];
   characterId?: string;
@@ -91,6 +91,18 @@ export function detectTimelineConflicts(events: TimelineEvent[]): TimelineConfli
     }
   }
 
+  const byId = new Map(events.map((event) => [event.id, event]));
+  for (const event of events) {
+    const eventStart = asTimestamp(event.startAt);
+    if (!Number.isFinite(eventStart)) continue;
+    for (const predecessorId of event.predecessorIds ?? []) {
+      const predecessor = byId.get(predecessorId);
+      if (!predecessor) continue;
+      const predecessorEnd = asTimestamp(predecessor.endAt);
+      if (Number.isFinite(predecessorEnd) && predecessorEnd > eventStart) conflicts.push({ code: 'predecessor-order', message: `“${event.title}”早于前置事件“${predecessor.title}”结束`, eventIds: [predecessor.id, event.id] });
+    }
+  }
+
   for (let leftIndex = 0; leftIndex < events.length; leftIndex += 1) {
     const left = events[leftIndex]!;
     const leftStart = asTimestamp(left.startAt);
@@ -116,5 +128,24 @@ export function detectTimelineConflicts(events: TimelineEvent[]): TimelineConfli
     }
   }
 
+  return conflicts;
+}
+
+export function detectCharacterLifeConflicts(events: TimelineEvent[], characters: Array<{ id: string; title: string; birthDate?: string; deathAt?: string }>): TimelineConflict[] {
+  const conflicts: TimelineConflict[] = [];
+  const byId = new Map(characters.map((character) => [character.id, character]));
+  for (const event of events) {
+    const eventStart = asTimestamp(event.startAt);
+    const eventEnd = asTimestamp(event.endAt);
+    if (!Number.isFinite(eventStart) || !Number.isFinite(eventEnd)) continue;
+    for (const characterId of event.characterIds) {
+      const character = byId.get(characterId);
+      if (!character) continue;
+      const birth = character.birthDate ? asTimestamp(character.birthDate) : Number.NaN;
+      const death = character.deathAt ? asTimestamp(character.deathAt) : Number.NaN;
+      if (Number.isFinite(birth) && eventStart < birth) conflicts.push({ code: 'before-birth', message: `“${character.title}”在出生前出现在事件“${event.title}”`, eventIds: [event.id], characterId });
+      if (Number.isFinite(death) && eventEnd > death) conflicts.push({ code: 'after-death', message: `“${character.title}”在死亡后出现在事件“${event.title}”`, eventIds: [event.id], characterId });
+    }
+  }
   return conflicts;
 }

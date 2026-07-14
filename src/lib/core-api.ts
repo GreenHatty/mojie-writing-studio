@@ -1,4 +1,5 @@
 import type { JSONContent } from '@tiptap/core';
+import type { ProjectEntityKind, ProjectFieldValue } from './project-model';
 import { ApiError, apiRequest, jsonBody } from './api-client';
 
 export type CoreUser = { id: string; account: string; platformRole: 'OWNER' | 'WRITER' };
@@ -17,6 +18,8 @@ export type CoreProfileSettings = { theme: 'paper' | 'warm' | 'gray' | 'dark'; f
 export type CoreWritingStats = { date: string; addedCharacters: number; streakDays: number };
 export type CoreWorkSearchResult = { chapterId: string; chapterTitle: string; volumeTitle: string; snippet: string; matchCount: number };
 export type CoreTrashedChapter = { id: string; workId: string; volumeId: string; title: string; deletedAt: string; deleteReason: string | null };
+export type CoreProjectEntity = { id: string; workId: string; kind: ProjectEntityKind; title: string; summary: string; fields: Record<string, ProjectFieldValue>; createdBy: string; updatedBy: string; createdAt: string; updatedAt: string; deletedAt?: string };
+export type CoreEntityReference = { id: string; kind: ProjectEntityKind; title: string; field: string };
 
 function originHeader(): Record<string, string> {
   return typeof window === 'undefined' ? {} : { Origin: window.location.origin };
@@ -153,4 +156,32 @@ export async function saveCoreProfileSettings(settings: Omit<CoreProfileSettings
 
 export async function getCoreWritingStats(signal?: AbortSignal): Promise<CoreWritingStats> {
   return (await apiRequest<{ stats: CoreWritingStats }>('/api/core/writing-stats', { signal })).stats;
+}
+
+export async function listCoreProjectEntities(workId: string, options: { kind?: ProjectEntityKind; includeDeleted?: boolean } = {}, signal?: AbortSignal): Promise<CoreProjectEntity[]> {
+  const params = new URLSearchParams();
+  if (options.kind) params.set('kind', options.kind);
+  if (options.includeDeleted) params.set('includeDeleted', 'true');
+  const query = params.size ? `?${params}` : '';
+  return (await apiRequest<{ entities: CoreProjectEntity[] }>(`/api/core/works/${encodeURIComponent(workId)}/entities${query}`, { signal })).entities;
+}
+
+export async function createCoreProjectEntity(workId: string, input: { kind: ProjectEntityKind; title: string; summary?: string; fields?: Record<string, ProjectFieldValue> }, csrf: string, signal?: AbortSignal): Promise<CoreProjectEntity> {
+  return (await apiRequest<{ entity: CoreProjectEntity }>(`/api/core/works/${encodeURIComponent(workId)}/entities`, { method: 'POST', headers: mutationHeaders(csrf), body: jsonBody(input), signal })).entity;
+}
+
+export async function updateCoreProjectEntity(workId: string, entityId: string, input: { title: string; summary?: string; fields?: Record<string, ProjectFieldValue> }, csrf: string, signal?: AbortSignal): Promise<CoreProjectEntity> {
+  return (await apiRequest<{ entity: CoreProjectEntity }>(`/api/core/works/${encodeURIComponent(workId)}/entities/${encodeURIComponent(entityId)}`, { method: 'PATCH', headers: mutationHeaders(csrf), body: jsonBody(input), signal })).entity;
+}
+
+export async function listCoreEntityReferences(workId: string, entityId: string, signal?: AbortSignal): Promise<CoreEntityReference[]> {
+  return (await apiRequest<{ references: CoreEntityReference[] }>(`/api/core/works/${encodeURIComponent(workId)}/entities/${encodeURIComponent(entityId)}`, { signal })).references;
+}
+
+export async function deleteCoreProjectEntity(workId: string, entityId: string, csrf: string, options: { reason?: string; confirmReferences?: boolean } = {}, signal?: AbortSignal): Promise<void> {
+  await apiRequest(`/api/core/works/${encodeURIComponent(workId)}/entities/${encodeURIComponent(entityId)}`, { method: 'DELETE', headers: mutationHeaders(csrf), body: jsonBody(options), signal });
+}
+
+export async function restoreCoreProjectEntity(workId: string, entityId: string, csrf: string, signal?: AbortSignal): Promise<void> {
+  await apiRequest(`/api/core/works/${encodeURIComponent(workId)}/entities/${encodeURIComponent(entityId)}/restore`, { method: 'POST', headers: mutationHeaders(csrf), signal });
 }
