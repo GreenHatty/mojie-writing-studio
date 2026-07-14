@@ -44,8 +44,10 @@ for (const path of ['scripts/mojie-api.mjs', 'scripts/mojie-auth-api.mjs', 'scri
   assert(!/console\.error\([^\n]*,\s*error\s*\)/u.test(read(path)), `${path} logs raw errors`);
 }
 
-const build = read('scripts/prepare-dist.mjs');
+const build = `${read('scripts/prepare-dist.mjs')}\n${read('scripts/worker-config.mjs')}`;
 assert(!build.includes('CLOUDFLARE_BACKUP_BUCKET_NAME') && !build.includes("binding: 'BACKUP_BUCKET'"), 'Generated Worker config must not create an R2 backup binding');
+for (const secret of ['OWNER_INITIALIZATION_KEY', 'LOCAL_DRAFT_KEK', 'MOJIE_BACKUP_MASTER_KEY']) assert(build.includes(secret), `Generated Worker config must require ${secret}`);
+assert(build.includes("APP_ORIGIN must be an exact HTTPS origin"), 'Generated production config must fail closed without an exact HTTPS origin');
 const entry = read('scripts/cloudflare-fetch-entry.mjs');
 assert(entry.includes('handleMojieCoreOperationsScheduled') && !entry.includes('handleMojieScheduled(env'), 'Cron must use the normalized core operations scheduler');
 

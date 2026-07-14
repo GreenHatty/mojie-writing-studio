@@ -102,12 +102,45 @@ jobs:
           npx wrangler d1 migrations apply DB --remote --config wrangler.preview-d1.json
 
           admin_token="$(node --input-type=module -e "import { randomBytes } from 'node:crypto'; process.stdout.write(randomBytes(48).toString('base64url'))")"
+          owner_key="$(node --input-type=module -e "import { randomBytes } from 'node:crypto'; process.stdout.write(randomBytes(48).toString('base64url'))")"
+          draft_kek="$(node --input-type=module -e "import { randomBytes } from 'node:crypto'; process.stdout.write(randomBytes(32).toString('base64url'))")"
           backup_key="$(node --input-type=module -e "import { randomBytes } from 'node:crypto'; process.stdout.write(randomBytes(48).toString('base64url'))")"
           echo "::add-mask::$admin_token"
+          echo "::add-mask::$owner_key"
+          echo "::add-mask::$draft_kek"
           echo "::add-mask::$backup_key"
           {
             echo "MOJIE_ADMIN_TOKEN=$admin_token"
+            echo "OWNER_INITIALIZATION_KEY=$owner_key"
+            echo "LOCAL_DRAFT_KEK=$draft_kek"
             echo "MOJIE_BACKUP_MASTER_KEY=$backup_key"
+          } >> "$GITHUB_ENV"
+
+      - name: Resolve exact preview origin
+        if: steps.cloudflare-auth.outputs.ready == 'true'
+        shell: bash
+        run: |
+          set -euo pipefail
+          subdomain_json="$(curl --silent --show-error --header "Authorization: Bearer ${CLOUDFLARE_API_TOKEN}" "https://api.cloudflare.com/client/v4/accounts/${CLOUDFLARE_ACCOUNT_ID}/workers/subdomain")"
+          workers_subdomain="$(SUBDOMAIN_JSON="$subdomain_json" node --input-type=module -e '
+            let value = {};
+            try { value = JSON.parse(process.env.SUBDOMAIN_JSON || "{}"); } catch {}
+            process.stdout.write(value.result?.subdomain || "");
+          ')"
+          if [[ -z "$workers_subdomain" ]]; then
+            account_hash="$(printf '%s' "$CLOUDFLARE_ACCOUNT_ID" | sha256sum | cut -c1-10)"
+            candidate="mojie-${account_hash}"
+            registration_json="$(curl --fail --silent --show-error --request PUT --header "Authorization: Bearer ${CLOUDFLARE_API_TOKEN}" --header "Content-Type: application/json" --data "{\"subdomain\":\"${candidate}\"}" "https://api.cloudflare.com/client/v4/accounts/${CLOUDFLARE_ACCOUNT_ID}/workers/subdomain")"
+            workers_subdomain="$(SUBDOMAIN_JSON="$registration_json" node --input-type=module -e '
+              const value = JSON.parse(process.env.SUBDOMAIN_JSON || "{}");
+              if (!value.success || !value.result?.subdomain) throw new Error("workers.dev subdomain registration failed");
+              process.stdout.write(value.result.subdomain);
+            ')"
+          fi
+          preview_url="https://${CLOUDFLARE_WORKER_NAME}.${workers_subdomain}.workers.dev"
+          {
+            echo "APP_ORIGIN=$preview_url"
+            echo "MOJIE_PREVIEW_URL=$preview_url"
           } >> "$GITHUB_ENV"
 
       - name: Upload provisioning diagnostics
@@ -129,9 +162,12 @@ jobs:
           node --check scripts/mojie-privacy-guard.mjs
           node --check scripts/cloudflare-fetch-entry.mjs
           node --check scripts/cloudflare-preview-acceptance.mjs
+          node --check scripts/cloudflare-core-preview-acceptance.mjs
           node scripts/test-privacy-guard.mjs
+          npm audit --omit=dev --audit-level=moderate
           npm test
           npm run typecheck
+          npm run test:security-final
 
       - name: Build preview Worker
         if: steps.cloudflare-auth.outputs.ready == 'true'
@@ -144,41 +180,20 @@ jobs:
         run: |
           set -euo pipefail
           exec > >(tee cloudflare-deploy.log) 2>&1
-
-          subdomain_json="$(curl --silent --show-error \
-            --header "Authorization: Bearer ${CLOUDFLARE_API_TOKEN}" \
-            "https://api.cloudflare.com/client/v4/accounts/${CLOUDFLARE_ACCOUNT_ID}/workers/subdomain")"
-          workers_subdomain="$(SUBDOMAIN_JSON="$subdomain_json" node --input-type=module -e '
-            let value = {};
-            try { value = JSON.parse(process.env.SUBDOMAIN_JSON || "{}"); } catch {}
-            process.stdout.write(value.result?.subdomain || "");
-          ')"
-
-          if [[ -z "$workers_subdomain" ]]; then
-            account_hash="$(printf '%s' "$CLOUDFLARE_ACCOUNT_ID" | sha256sum | cut -c1-10)"
-            candidate="mojie-${account_hash}"
-            registration_json="$(curl --fail --silent --show-error --request PUT \
-              --header "Authorization: Bearer ${CLOUDFLARE_API_TOKEN}" \
-              --header "Content-Type: application/json" \
-              --data "{\"subdomain\":\"${candidate}\"}" \
-              "https://api.cloudflare.com/client/v4/accounts/${CLOUDFLARE_ACCOUNT_ID}/workers/subdomain")"
-            workers_subdomain="$(SUBDOMAIN_JSON="$registration_json" node --input-type=module -e '
-              const value = JSON.parse(process.env.SUBDOMAIN_JSON || "{}");
-              if (!value.success || !value.result?.subdomain) throw new Error(`workers.dev subdomain registration failed: ${JSON.stringify(value.errors || [])}`);
-              process.stdout.write(value.result.subdomain);
-            ')"
-            echo "Registered workers.dev subdomain: $workers_subdomain"
-          else
-            echo "Using existing workers.dev subdomain: $workers_subdomain"
-          fi
-
-          npx wrangler deploy --config dist/wrangler.json
-          printf '%s' "$MOJIE_ADMIN_TOKEN" | npx wrangler secret put MOJIE_ADMIN_TOKEN --config dist/wrangler.json
-          printf '%s' "$MOJIE_BACKUP_MASTER_KEY" | npx wrangler secret put MOJIE_BACKUP_MASTER_KEY --config dist/wrangler.json
-
-          preview_url="https://${CLOUDFLARE_WORKER_NAME}.${workers_subdomain}.workers.dev"
-          echo "deployment-url=$preview_url" >> "$GITHUB_OUTPUT"
-          echo "Preview URL: $preview_url"
+          secrets_file="$RUNNER_TEMP/mojie-preview-secrets.json"
+          trap 'rm -f "$secrets_file"' EXIT
+          SECRETS_FILE="$secrets_file" node --input-type=module -e '
+            import { writeFileSync } from "node:fs";
+            writeFileSync(process.env.SECRETS_FILE, JSON.stringify({
+              OWNER_INITIALIZATION_KEY: process.env.OWNER_INITIALIZATION_KEY,
+              LOCAL_DRAFT_KEK: process.env.LOCAL_DRAFT_KEK,
+              MOJIE_BACKUP_MASTER_KEY: process.env.MOJIE_BACKUP_MASTER_KEY,
+              MOJIE_ADMIN_TOKEN: process.env.MOJIE_ADMIN_TOKEN
+            }), { mode: 0o600 });
+          '
+          npx wrangler deploy --config dist/wrangler.json --secrets-file "$secrets_file"
+          echo "deployment-url=$MOJIE_PREVIEW_URL" >> "$GITHUB_OUTPUT"
+          echo "Preview URL: $MOJIE_PREVIEW_URL"
 
       - name: Upload deployment diagnostics
         if: failure() && steps.cloudflare-auth.outputs.ready == 'true'
@@ -212,12 +227,14 @@ jobs:
           sleep 4
           set +e
           node scripts/cloudflare-preview-acceptance.mjs 2>&1 | tee cloudflare-acceptance.log
-          acceptance_status=${PIPESTATUS[0]}
+          legacy_status=${PIPESTATUS[0]}
+          node scripts/cloudflare-core-preview-acceptance.mjs 2>&1 | tee cloudflare-core-acceptance.log
+          core_status=${PIPESTATUS[0]}
           set -e
           sleep 3
           kill "$tail_pid" 2>/dev/null || true
           wait "$tail_pid" 2>/dev/null || true
-          exit "$acceptance_status"
+          [[ "$legacy_status" == "0" && "$core_status" == "0" ]]
 
       - name: Upload acceptance diagnostics
         if: failure() && steps.cloudflare-auth.outputs.ready == 'true'
@@ -226,6 +243,7 @@ jobs:
           name: cloudflare-acceptance-diagnostics-${{ github.run_id }}
           path: |
             cloudflare-acceptance.log
+            cloudflare-core-acceptance.log
             cloudflare-worker-tail.log
           if-no-files-found: warn
           retention-days: 30
@@ -235,7 +253,9 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: cloudflare-preview-acceptance-${{ github.run_id }}
-          path: cloudflare-preview-acceptance.json
+          path: |
+            cloudflare-preview-acceptance.json
+            cloudflare-core-preview-acceptance.json
           if-no-files-found: warn
           retention-days: 30
 
@@ -252,6 +272,7 @@ jobs:
             echo "- R2: not enabled or used"
             echo "- DOCX: browser IndexedDB plus manual download"
             echo "- External backup: WebDAV/S3-compatible, not configured in preview"
+            echo "- Normalized core: owner initialization, production cookies, encrypted draft key, idempotent save, migration rollback and logout passed"
             echo "- Temporary preview: ${PREVIEW_URL}"
             echo "- Worker and D1 are removed by the cleanup step."
           } >> "$GITHUB_STEP_SUMMARY"

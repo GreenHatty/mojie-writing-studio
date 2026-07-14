@@ -14,11 +14,11 @@
 `.github/workflows/cloudflare-preview.yml` 会自动：
 
 1. 创建本次运行专用的临时 Worker 与 D1；
-2. 应用 `0001_cloud.sql` 和 `0002_collaboration_admin.sql`；
-3. 随机生成临时 `MOJIE_ADMIN_TOKEN` 与 `MOJIE_BACKUP_MASTER_KEY`；
+2. 按顺序应用 `0001` 至 `0006` 的全部迁移；
+3. 随机生成临时 `OWNER_INITIALIZATION_KEY`、32字节 `LOCAL_DRAFT_KEK`、`MOJIE_BACKUP_MASTER_KEY` 和兼容验收密钥；
 4. 检查独立认证模块、隐私守卫、单元测试与 TypeScript；
 5. 构建并部署预览 Worker；
-6. 验收登录、邀请、editor/viewer 权限、修订冲突、撤权、批注、建议、排行榜白名单和管理统计；
+6. 同时验收兼容 API 与规范核心 API，包括平台 Owner 初始化、生产 Cookie、草稿密钥、Tiptap 正文、保存幂等、迁移回滚、权限与会话撤销；
 7. 验证未绑定 R2 时 DOCX 云上传明确返回 503；
 8. 验证 WebDAV/S3 备份策略接口可用；
 9. 上传 JSON 验收报告；
@@ -26,7 +26,7 @@
 
 预览密钥不会写入仓库，也不会成为长期生产密钥。
 
-真实 D1 隔离预览 run `29178727652` 已完成资源创建、迁移、Worker 部署、14项检查、报告上传和资源清理，全部为 `success`。
+每次正式部署前都必须重新运行隔离预览；旧预览记录不能替代当前提交的规范核心验收。
 
 ### 正式环境
 
@@ -36,8 +36,8 @@
 2. 应用全部未执行迁移；
 3. 运行独立认证模块、隐私边界、单元测试、TypeScript、生产构建和 Worker 入口验证；
 4. 部署 Worker；
-5. 写入 `MOJIE_ADMIN_TOKEN` 与 `MOJIE_BACKUP_MASTER_KEY`；
-6. 检查 D1 绑定与未登录 401。
+5. 写入 `OWNER_INITIALIZATION_KEY`、`LOCAL_DRAFT_KEK` 与 `MOJIE_BACKUP_MASTER_KEY`；
+6. 检查精确 HTTPS `APP_ORIGIN`、D1 绑定、未登录 401、`no-store` 与草稿密钥失败关闭。
 
 正式部署不会自动创建 R2，也不会在 PR 上自动发生。
 
@@ -62,8 +62,13 @@ Cloudflare Token 只需要：
 
 正式 `production` Environment 另需：
 
-- `MOJIE_ADMIN_TOKEN`
+- `OWNER_INITIALIZATION_KEY`（未配置时生产工作流可兼容读取现有 `MOJIE_ADMIN_TOKEN`）
+- `LOCAL_DRAFT_KEK`（32个随机字节的 base64url 编码）
 - `MOJIE_BACKUP_MASTER_KEY`
+
+可选 Repository Variable：
+
+- `MOJIE_APP_ORIGIN`：自定义域名的精确 HTTPS origin；未配置时工作流使用当前 Worker 的 `workers.dev` 地址。
 
 建议为 production Environment 开启人工审批。
 
@@ -77,4 +82,4 @@ Cloudflare Token 只需要：
 4. 临时 Worker 与 D1 清理成功；
 5. `Quality` 工作流成功。
 
-当前分支已经满足上述预览条件。正式生产环境仍需单独配置长期应用密钥并人工批准部署。
+只有当前 `main` 提交对应的预览工作流成功后，才允许触发正式生产工作流。长期草稿 KEK 不得在已有用户草稿后自动轮换。
