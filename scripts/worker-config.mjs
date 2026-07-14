@@ -28,7 +28,11 @@ export function createWorkerConfig(environment = process.env) {
     assets: {
       binding: 'ASSETS',
       directory: 'client',
-      not_found_handling: 'none'
+      not_found_handling: 'none',
+      // Authentication and private writing routes must never be short-circuited
+      // by the asset router. The application Worker decides whether a request is
+      // an API call, a protected navigation or a public immutable asset.
+      run_worker_first: true
     },
     secrets: { required: [...REQUIRED_WORKER_SECRETS] },
     triggers: {

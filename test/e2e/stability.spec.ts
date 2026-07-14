@@ -256,9 +256,9 @@ test('keeps graph, DOCX, rankings and backup panels outside the writing long-tas
   await expect(page.getByRole('dialog', { name: '大纲与世界设定' })).toBeVisible();
   await page.getByRole('button', { name: '时间线、关系图与地图' }).click();
   await expect(page.getByRole('button', { name: '甘特图' })).toBeVisible();
-  await page.getByRole('button', { name: '人物关系' }).click();
+  await page.getByRole('tab', { name: '人物关系' }).click();
   await expect(page.getByText('网状', { exact: true })).toBeVisible();
-  await page.getByRole('button', { name: '地图DIY' }).click();
+  await page.getByRole('tab', { name: '地图DIY' }).click();
   await expect(page.getByRole('application', { name: '可绘制世界地图' })).toBeVisible();
   await page.getByRole('button', { name: '关闭大纲与世界设定' }).click();
   await page.getByRole('button', { name: '写作工具箱' }).click();
