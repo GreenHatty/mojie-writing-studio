@@ -9,7 +9,7 @@ if (!/export\s+default\s+\{[\s\S]*?fetch\s*\(/.test(entry)) {
 if (!/scheduled\s*\(/.test(entry)) {
   throw new Error('Expected Worker entry to export a scheduled handler for rankings and backups.');
 }
-for (const modulePath of ['dist/server/mojie-auth-api.mjs', 'dist/server/mojie-api.mjs', 'dist/server/mojie-extended-api.mjs', 'dist/server/mojie-privacy-guard.mjs', 'dist/server/ranking-adapters.mjs']) {
+for (const modulePath of ['dist/server/mojie-auth-api.mjs', 'dist/server/mojie-api.mjs', 'dist/server/mojie-extended-api.mjs', 'dist/server/mojie-privacy-guard.mjs', 'dist/server/ranking-adapters.mjs', 'dist/server/backup-adapters.mjs', 'dist/server/mojie-core-operations-api.mjs']) {
   if (!existsSync(modulePath)) throw new Error(`Expected Worker API module at ${modulePath}.`);
 }
 
@@ -29,6 +29,14 @@ const rankingAdapters = readFileSync('dist/server/ranking-adapters.mjs', 'utf8')
 for (const requiredCapability of ['QidianRankingAdapterV1', 'FanqieRankingAdapterV1', 'ranking_response_too_large', 'ranking_redirect_rejected']) {
   if (!rankingAdapters.includes(requiredCapability)) throw new Error(`Expected ranking adapter bundle to include ${requiredCapability}.`);
 }
+const coreOperations = readFileSync('dist/server/mojie-core-operations-api.mjs', 'utf8');
+for (const requiredCapability of ['handleMojieCoreOperationsApi', 'processCoreRankingTask', 'processCoreBackupRun', 'publication_records', 'core_ranking_snapshots']) {
+  if (!coreOperations.includes(requiredCapability)) throw new Error(`Expected core operations bundle to include ${requiredCapability}.`);
+}
+const backupAdapters = readFileSync('dist/server/backup-adapters.mjs', 'utf8');
+for (const requiredCapability of ['WebDavBackupAdapter', 'S3CompatibleBackupAdapter', 'backup_redirect_rejected', 'backup_response_too_large']) {
+  if (!backupAdapters.includes(requiredCapability)) throw new Error(`Expected backup adapter bundle to include ${requiredCapability}.`);
+}
 
 const extendedApi = readFileSync('dist/server/mojie-extended-api.mjs', 'utf8');
 for (const requiredCapability of ['publicRoutes', 'adminRoutes', 'memberRoutes', 'collaborationRoutes', 'chapter_comments', 'chapter_suggestions', 'site_settings']) {
@@ -44,6 +52,9 @@ if (!entry.includes('guardMojiePrivateContent') || !entry.includes('handleMojieA
 }
 if (!Array.isArray(workerConfig.triggers?.crons) || !workerConfig.triggers.crons.length) {
   throw new Error('Expected at least one cron trigger for automatic rankings and backup retention.');
+}
+if (Array.isArray(workerConfig.r2_buckets) && workerConfig.r2_buckets.some((binding) => binding.binding === 'BACKUP_BUCKET')) {
+  throw new Error('R2 backup storage must remain disabled by default.');
 }
 
 const todayUtc = new Date().toISOString().slice(0, 10);

@@ -13,7 +13,8 @@
     "APP_ORIGIN": "http://127.0.0.1:8790",
     "NODE_ENV": "development",
     "OWNER_INITIALIZATION_KEY": "test-only-owner-initialization-key-not-for-production",
-    "LOCAL_DRAFT_KEK": "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA"
+    "LOCAL_DRAFT_KEK": "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA",
+    "MOJIE_BACKUP_MASTER_KEY": "test-only-backup-master-key-not-for-production"
   },
   "d1_databases": [
     {

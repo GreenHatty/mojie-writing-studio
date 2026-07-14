@@ -30,6 +30,13 @@ async function installCoreApi(page: Page, userId: string) {
     if (path === '/api/core/profile-settings' && method === 'GET') return json(route, { settings: { theme: 'paper', fontSize: 18, lineHeight: 1.9, editorWidth: 'comfortable', leftColumnWidth: 280, rightColumnWidth: 320, updatedAt: '2026-07-14T00:00:00Z' } });
     if (path === '/api/core/profile-settings' && method === 'PUT') return json(route, { settings: { ...request.postDataJSON(), updatedAt: new Date().toISOString() } });
     if (path === '/api/core/writing-stats') return json(route, { stats: { date: '2026-07-14', addedCharacters: 0, streakDays: 0 } });
+    if (path === '/api/core/publications' && method === 'GET') return json(route, { records: [] });
+    if (path === '/api/core/publications' && method === 'POST') return json(route, { recordId: 'publication-1' }, 201);
+    if (path === '/api/core/rankings/sources' && method === 'GET') {
+      state.rankingRequests += 1;
+      return json(route, { sources: [{ id: 'source-1', platform: 'qidian', listName: '脱敏验收榜', category: '玄幻', sourceUrl: 'https://www.qidian.com/rank/', enabled: true, authorizationNote: 'fixture', lastSuccessAt: '2026-07-14T00:00:00Z', lastErrorCode: null, latestSnapshot: { id: 'snapshot-1', rankingDate: '2026-07-14', items: [{ rank: 1, title: '脱敏榜单作品', author: '作者', blurb: '开局觉醒系统', tags: ['玄幻'], url: 'https://www.qidian.com/book/1', rankChange: null }], analysis: { sampleSize: 1, common: [{ element: '系统', count: 1, share: 1 }], disclaimer: '结构性推测' } } }] });
+    }
+    if (path === '/api/core/backups/targets' && method === 'GET') return json(route, { targets: [], runs: [], objects: [], configured: false });
     if (path === '/api/core/works' && method === 'GET') return json(route, { works: state.work ? [{ id: state.work.id, title: state.work.title, kind: state.work.kind, status: 'DRAFT', updatedAt: '2026-07-14T00:00:00Z', role: 'WORK_OWNER', totalWordCount: state.work.chapters.reduce((sum, chapter) => sum + chapter.wordCount, 0) }] : [] });
     if (path === '/api/core/works' && method === 'POST') {
       const input = request.postDataJSON() as { title: string; kind: WorkState['kind'] };
@@ -152,6 +159,13 @@ test('uses responsive drawers and never starts the ranking module implicitly', a
     await expect(page.getByRole('dialog', { name: '写作工具箱' })).toBeVisible();
     await expect(page.getByRole('heading', { name: '写作工具箱' })).toBeVisible();
     await page.getByRole('button', { name: '关闭写作工具箱' }).click();
+    await page.getByRole('button', { name: '发布与备份' }).click();
+    await expect(page.getByRole('dialog', { name: '平台运营与外部备份' })).toBeVisible();
+    expect(state.rankingRequests).toBe(0);
+    await page.getByRole('button', { name: '平台榜单' }).click();
+    await expect(page.getByRole('button', { name: /脱敏榜单作品/u })).toBeVisible();
+    expect(state.rankingRequests).toBe(1);
+    await page.getByRole('button', { name: '关闭' }).click();
   }
   if (test.info().project.name === 'mobile-390') {
     const directory = page.getByRole('complementary', { name: '作品目录' });
@@ -166,7 +180,7 @@ test('uses responsive drawers and never starts the ranking module implicitly', a
     await expect(page.getByRole('dialog', { name: '大纲与世界设定' })).toHaveCSS('width', '390px');
     await page.getByRole('button', { name: '关闭大纲与世界设定' }).click();
   }
-  expect(state.rankingRequests).toBe(0);
+  expect(state.rankingRequests).toBe(test.info().project.name === 'desktop' ? 1 : 0);
 });
 
 test('creates worldbuilding records and highlights chapter mentions without persisting marks', async ({ page }) => {

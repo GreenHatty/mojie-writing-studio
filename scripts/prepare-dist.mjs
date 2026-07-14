@@ -9,6 +9,8 @@ copyFileSync('scripts/cloudflare-fetch-entry.mjs', 'dist/server/index.js');
 copyFileSync('scripts/mojie-auth-api.mjs', 'dist/server/mojie-auth-api.mjs');
 copyFileSync('scripts/mojie-api.mjs', 'dist/server/mojie-api.mjs');
 copyFileSync('scripts/ranking-adapters.mjs', 'dist/server/ranking-adapters.mjs');
+copyFileSync('scripts/backup-adapters.mjs', 'dist/server/backup-adapters.mjs');
+copyFileSync('scripts/mojie-core-operations-api.mjs', 'dist/server/mojie-core-operations-api.mjs');
 copyFileSync('scripts/mojie-extended-api.mjs', 'dist/server/mojie-extended-api.mjs');
 copyFileSync('scripts/mojie-privacy-guard.mjs', 'dist/server/mojie-privacy-guard.mjs');
 mkdirSync('dist/.openai', { recursive: true });
@@ -46,9 +48,6 @@ if (process.env.CLOUDFLARE_D1_DATABASE_ID) {
 const r2Buckets = [];
 if (process.env.CLOUDFLARE_DOCX_BUCKET_NAME) {
   r2Buckets.push({ binding: 'DOCX_BUCKET', bucket_name: process.env.CLOUDFLARE_DOCX_BUCKET_NAME });
-}
-if (process.env.CLOUDFLARE_BACKUP_BUCKET_NAME) {
-  r2Buckets.push({ binding: 'BACKUP_BUCKET', bucket_name: process.env.CLOUDFLARE_BACKUP_BUCKET_NAME });
 }
 if (r2Buckets.length) wrangler.r2_buckets = r2Buckets;
 

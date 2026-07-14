@@ -13,6 +13,7 @@ function run(args) {
     process.stderr.write(result.stderr || '');
     throw new Error(`Core worker prerequisite failed: ${args.join(' ')}`);
   }
+  return result.stdout;
 }
 
 function cookies(response) {
@@ -49,7 +50,7 @@ async function main() {
   // This named database exists only under test/.wrangler. Resetting its
   // foundation rows makes the acceptance executable repeatable without
   // touching any user or remote D1 data.
-  run(['d1', 'execute', database, '--local', '--config', config, '--command', 'DELETE FROM project_entities; DELETE FROM chapter_conflicts; DELETE FROM chapter_versions; DELETE FROM chapter_notes; DELETE FROM chapter_comments_v2; DELETE FROM change_suggestions; DELETE FROM sync_operations; DELETE FROM chapters; DELETE FROM volumes; DELETE FROM work_access; DELETE FROM work_invitations; DELETE FROM writing_goals; DELETE FROM writing_sessions; DELETE FROM migration_work_items; DELETE FROM migration_runs; DELETE FROM profile_settings; DELETE FROM platform_audit_logs; DELETE FROM platform_invitations; DELETE FROM user_local_draft_keys; DELETE FROM platform_sessions; DELETE FROM auth_rate_limit_buckets; DELETE FROM works; DELETE FROM platform_accounts;']);
+  run(['d1', 'execute', database, '--local', '--config', config, '--command', 'DELETE FROM backup_objects_v2; DELETE FROM backup_runs; DELETE FROM backup_targets; DELETE FROM core_publication_records; DELETE FROM core_ranking_snapshots; DELETE FROM core_ranking_tasks; DELETE FROM core_ranking_sources; DELETE FROM project_entities; DELETE FROM chapter_conflicts; DELETE FROM chapter_versions; DELETE FROM chapter_notes; DELETE FROM chapter_comments_v2; DELETE FROM change_suggestions; DELETE FROM sync_operations; DELETE FROM chapters; DELETE FROM volumes; DELETE FROM work_access; DELETE FROM work_invitations; DELETE FROM writing_goals; DELETE FROM writing_sessions; DELETE FROM migration_work_items; DELETE FROM migration_runs; DELETE FROM profile_settings; DELETE FROM platform_audit_logs; DELETE FROM platform_invitations; DELETE FROM user_local_draft_keys; DELETE FROM platform_sessions; DELETE FROM auth_rate_limit_buckets; DELETE FROM works; DELETE FROM platform_accounts;']);
   const worker = spawn(process.execPath, [wrangler, 'dev', '--config', config, '--local', '--port', String(port)], {
     cwd: process.cwd(),
     stdio: ['ignore', 'pipe', 'pipe']
@@ -149,6 +150,25 @@ async function main() {
     const restoredEntity = await request(`/api/core/works/${encodeURIComponent(workId)}/entities/${encodeURIComponent(character.body.entity.id)}/restore`, { method: 'POST', headers });
     if (restoredEntity.response.status !== 200) throw new Error('Project entity restore failed');
 
+    const rankingSource = await request('/api/core/rankings/sources', { method: 'POST', headers, body: JSON.stringify({ platform: 'qidian', listName: '本地验收榜', category: '玄幻', sourceUrl: 'https://www.qidian.com/rank/', authorizationNote: '仅用于本地验收公开元数据来源配置' }) });
+    if (rankingSource.response.status !== 201 || !rankingSource.body.sourceId) throw new Error(`Core ranking source creation failed: ${rankingSource.response.status}`);
+    const rankingImport = await request('/api/core/rankings/import', { method: 'POST', headers, body: JSON.stringify({ sourceId: rankingSource.body.sourceId, format: 'json', rankingDate: '2026-07-14', content: JSON.stringify([{ rank: 1, title: '脱敏验收作品甲', author: '作者甲', tags: ['玄幻', '系统'], blurb: '公开简介验收内容' }, { rank: 2, title: '脱敏验收作品乙', author: '作者乙', tags: ['高武'], blurb: '第二条公开简介' }]) }) });
+    if (rankingImport.response.status !== 201 || rankingImport.body.itemCount !== 2) throw new Error('Manual ranking snapshot import failed');
+    const rankingSummary = await request('/api/core/rankings/sources', { headers: { Cookie: cookie } });
+    if (rankingSummary.response.status !== 200 || rankingSummary.body.sources?.[0]?.latestSnapshot?.items?.length !== 2 || rankingSummary.response.headers.get('cache-control') !== 'no-store, private') throw new Error('Latest-only ranking source summary failed');
+
+    const publication = await request('/api/core/publications', { method: 'POST', headers, body: JSON.stringify({ workId, chapterId, platform: 'qidian', platformChapterId: 'manual-acceptance-1' }) });
+    if (publication.response.status !== 201 || !publication.body.recordId) throw new Error('Manual publication record failed');
+    const publicationList = await request(`/api/core/publications?workId=${encodeURIComponent(workId)}`, { headers: { Cookie: cookie } });
+    if (publicationList.response.status !== 200 || publicationList.body.records?.[0]?.source_revision !== 3) throw new Error('Publication record did not preserve the source revision');
+
+    const backupTarget = await request('/api/core/backups/targets', { method: 'POST', headers, body: JSON.stringify({ workId, label: '本地 WebDAV 验收', targetType: 'webdav', intervalMinutes: 360, retentionHours: 168, config: { baseUrl: 'https://dav.example.test/backups', username: 'test-writer', password: 'test-only-secret-password' } }) });
+    if (backupTarget.response.status !== 201 || !backupTarget.body.targetId) throw new Error(`Encrypted backup target creation failed: ${backupTarget.response.status}`);
+    const backupSummary = await request('/api/core/backups/targets', { headers: { Cookie: cookie } });
+    if (backupSummary.response.status !== 200 || backupSummary.body.configured !== true || backupSummary.body.targets?.[0]?.target_type !== 'webdav') throw new Error('Backup target summary failed');
+    const encryptedTarget = JSON.parse(run(['d1', 'execute', database, '--local', '--config', config, '--command', `SELECT CAST(config_ciphertext AS TEXT) AS ciphertext,CAST(config_iv AS TEXT) AS iv FROM backup_targets WHERE id='${backupTarget.body.targetId}'`, '--json']))[0]?.results?.[0];
+    if (!encryptedTarget || JSON.stringify(encryptedTarget).includes('test-only-secret-password') || JSON.stringify(encryptedTarget).includes('test-writer')) throw new Error('Backup credentials were stored in plaintext');
+
     const writerToken = 'test-only-writer-session-token';
     const writerCsrf = 'test-only-writer-csrf';
     const now = new Date().toISOString();
@@ -156,11 +176,22 @@ async function main() {
     const absoluteExpires = new Date(Date.now() + 2 * 60 * 60_000).toISOString();
     run(['d1', 'execute', database, '--local', '--config', config, '--command', `INSERT INTO platform_accounts (id, account_identifier, platform_role, password_algorithm, password_iterations, password_salt, password_digest, created_at, updated_at) VALUES ('accept-writer', 'writer-acceptance@example.test', 'WRITER', 'PBKDF2-SHA-256', 600000, X'00', X'00', '${now}', '${now}'); INSERT INTO platform_sessions (id, token_hash, user_id, csrf_state, expires_at, absolute_expires_at, last_seen_at, created_at, updated_at) VALUES ('accept-writer-session', '${await tokenDigest(writerToken)}', 'accept-writer', '${writerCsrf}', '${expires}', '${absoluteExpires}', '${now}', '${now}', '${now}');`]);
     const writerCookie = `mojie-dev-session=${writerToken}; mojie-dev-csrf=${writerCsrf}`;
+    const writerHeaders = { Origin: origin, Cookie: writerCookie, 'X-CSRF-Token': writerCsrf, 'Content-Type': 'application/json' };
+    const writerRankingRead = await request('/api/core/rankings/sources', { headers: { Cookie: writerCookie } });
+    if (writerRankingRead.response.status !== 200 || writerRankingRead.body.sources?.length !== 1) throw new Error('Authenticated writer could not read public ranking summaries');
+    const writerRankingWrite = await request('/api/core/rankings/sources', { method: 'POST', headers: writerHeaders, body: JSON.stringify({ platform: 'qidian', sourceUrl: 'https://www.qidian.com/rank/', authorizationNote: '越权测试来源' }) });
+    if (writerRankingWrite.response.status !== 403) throw new Error('Non-owner writer could configure ranking sources');
+    const hiddenPublication = await request(`/api/core/publications?workId=${encodeURIComponent(workId)}`, { headers: { Cookie: writerCookie } });
+    if (hiddenPublication.response.status !== 404) throw new Error('Unrelated writer could read publication records for a private work');
+    const writerBackup = await request('/api/core/backups/targets', { headers: { Cookie: writerCookie } });
+    if (writerBackup.response.status !== 200 || writerBackup.body.targets?.length !== 0 || writerBackup.body.objects?.length !== 0) throw new Error('Backup listing leaked another account records');
     const hiddenFromWriter = await request(`/api/core/works/${encodeURIComponent(workId)}/entities`, { headers: { Cookie: writerCookie } });
     if (hiddenFromWriter.response.status !== 404) throw new Error('Unrelated writer could read private project entities');
     run(['d1', 'execute', database, '--local', '--config', config, '--command', `INSERT INTO work_access (work_id, user_id, role, created_at) VALUES ('${workId}', 'accept-writer', 'VIEWER', '${now}');`]);
     const visibleToViewer = await request(`/api/core/works/${encodeURIComponent(workId)}/entities`, { headers: { Cookie: writerCookie } });
     if (visibleToViewer.response.status !== 200 || !visibleToViewer.body.entities?.length) throw new Error('Authorized viewer could not read project entities');
+    const viewerPublication = await request('/api/core/publications', { method: 'POST', headers: writerHeaders, body: JSON.stringify({ workId, chapterId, platform: 'fanqie' }) });
+    if (viewerPublication.response.status !== 403) throw new Error('Viewer could create a publication record');
     const viewerWrite = await request(`/api/core/works/${encodeURIComponent(workId)}/entities`, { method: 'POST', headers: { Origin: origin, Cookie: writerCookie, 'X-CSRF-Token': writerCsrf, 'Content-Type': 'application/json' }, body: JSON.stringify({ kind: 'character', title: '越权人物', fields: {} }) });
     if (viewerWrite.response.status !== 403) throw new Error('Viewer could write project entities');
     run(['d1', 'execute', database, '--local', '--config', config, '--command', `UPDATE work_access SET role = 'EDITOR' WHERE work_id = '${workId}' AND user_id = 'accept-writer';`]);
@@ -183,7 +214,7 @@ async function main() {
     if (logout.response.status !== 200) throw new Error('Logout failed');
     const afterLogout = await request('/api/core/works', { headers: { Cookie: cookie } });
     if (afterLogout.response.status !== 401) throw new Error('Revoked session retained protected work access');
-    process.stdout.write('Local core Worker acceptance passed (auth, encrypted-draft key, settings, directory, notes, versions, search, trash, permission-isolated worldbuilding, reference-aware restore, stats, idempotent save, conflict copy, and logout revocation).\n');
+    process.stdout.write('Local core Worker acceptance passed (auth, encrypted-draft key, private writing, worldbuilding, manual rankings, publication records, encrypted optional backups, idempotent saves, conflict copies, and logout revocation).\n');
   } finally {
     if (!worker.killed) worker.kill('SIGTERM');
     if (process.platform === 'win32' && worker.pid) spawnSync('taskkill', ['/pid', String(worker.pid), '/t', '/f'], { stdio: 'ignore' });

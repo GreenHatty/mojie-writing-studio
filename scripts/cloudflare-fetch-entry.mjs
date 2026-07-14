@@ -1,7 +1,8 @@
 import handler from './vinext-handler.js';
 import { handleMojieAuthApi } from './mojie-auth-api.mjs';
-import { handleMojieApi, handleMojieScheduled } from './mojie-api.mjs';
+import { handleMojieApi } from './mojie-api.mjs';
 import { handleMojieExtendedApi } from './mojie-extended-api.mjs';
+import { handleMojieCoreOperationsApi, handleMojieCoreOperationsScheduled } from './mojie-core-operations-api.mjs';
 import { guardMojiePrivateContent } from './mojie-privacy-guard.mjs';
 
 function privateResponse(response) {
@@ -14,6 +15,8 @@ function privateResponse(response) {
 export default {
   async fetch(request, env, ctx) {
     const pathname = new URL(request.url).pathname;
+    const operationsResponse = await handleMojieCoreOperationsApi(request, env, ctx);
+    if (operationsResponse) return privateResponse(operationsResponse);
     // The foundation routes are isolated while the legacy API remains in its
     // compatibility window. This prevents two authorization systems from
     // silently handling the same endpoint.
@@ -30,6 +33,6 @@ export default {
     return request.mode === 'navigate' || request.destination === 'document' ? privateResponse(response) : response;
   },
   scheduled(_controller, env, ctx) {
-    return handleMojieScheduled(env, ctx);
+    return handleMojieCoreOperationsScheduled(env, ctx);
   }
 };
