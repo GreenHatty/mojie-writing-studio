@@ -65,7 +65,16 @@ export function createAuthService(repository: AuthRepository, options: { initial
       if (!account) throw new AppError('INVALID_INPUT', 400);
       let password: StoredPassword;
       try { password = await hashPassword(input.password); }
-      catch { throw new AppError('INVALID_PASSWORD', 400); }
+      catch (error) {
+        const runtimeLimit = error instanceof Error
+          ? /iteration counts above (\d+) are not supported/u.exec(error.message)?.[1]
+          : undefined;
+        console.error('password_hash_runtime_rejected', {
+          errorName: error instanceof Error ? error.name : 'UnknownError',
+          runtimeLimit: runtimeLimit ?? 'unknown'
+        });
+        throw new AppError('INVALID_PASSWORD', 400);
+      }
       const user: AuthUser = { id: crypto.randomUUID(), account, platformRole: 'OWNER', password };
       await repository.initializeOwner(user, new Date().toISOString());
       return user;

@@ -28,10 +28,14 @@ MOJIE_CRON_SCHEDULE=*/15 * * * *
 npx wrangler@latest d1 migrations apply mojie-writing-studio --remote
 ```
 
-必须应用全部迁移：
+必须按顺序应用全部迁移：
 
 - `migrations/0001_cloud.sql`：用户、邀请、会话、作品成员、云端修订、DOCX元数据、榜单、备份和审计；
 - `migrations/0002_collaboration_admin.sql`：站点设置、段落批注、修改建议和发布记录。
+- `migrations/0003_ranking_tasks.sql`：异步榜单任务和任务状态；
+- `migrations/0004_platform_foundation.sql`：平台身份、作品权限、规范正文、版本、冲突、同步幂等、迁移记录和用户草稿密钥封装；
+- `migrations/0005_worldbuilding.sql`：大纲、人物、地点、时间线、关系图、地图和素材的统一设定实体；
+- `migrations/0006_operations.sql`：规范化榜单快照、人工发布记录及 WebDAV/S3 备份目标与对象。
 
 DOCX 云存储表仍保留，便于未来自愿启用对象存储，但当前未绑定 R2 时相关云上传接口会明确返回 503。
 
@@ -40,12 +44,16 @@ DOCX 云存储表仍保留，便于未来自愿启用对象存储，但当前未
 必须使用托管密钥，不要写入仓库或 `NEXT_PUBLIC_*`：
 
 ```bash
-npx wrangler@latest secret put MOJIE_ADMIN_TOKEN
+npx wrangler@latest secret put OWNER_INITIALIZATION_KEY
+npx wrangler@latest secret put LOCAL_DRAFT_KEK
 npx wrangler@latest secret put MOJIE_BACKUP_MASTER_KEY
 ```
 
-- `MOJIE_ADMIN_TOKEN`：仅用于首次创建站点所有者，建议至少32个随机字符；
+- `OWNER_INITIALIZATION_KEY`：仅用于首次创建核心平台所有者，至少32个随机字符；生产工作流可临时兼容已有 `MOJIE_ADMIN_TOKEN`，新环境应使用新名称；
+- `LOCAL_DRAFT_KEK`：必须是32个随机字节的 base64url 编码，按用户派生 KEK 并封装本地草稿 DEK，部署后不得随意轮换；
 - `MOJIE_BACKUP_MASTER_KEY`：用于 AES-GCM 加密 WebDAV/S3 访问凭据。
+
+生产配置同时必须包含精确的 HTTPS `APP_ORIGIN`。未绑定 D1、缺少任一必需密钥或 `APP_ORIGIN` 带路径/使用 HTTP 时，构建或运行会失败关闭。
 
 ## 4. 构建和部署
 
@@ -73,12 +81,11 @@ Worker 服务端目录还必须包含：
 
 打开网站，选择“首次初始化”，输入：
 
-- 所有者邮箱；
-- 显示名称；
-- 至少10位密码；
-- `MOJIE_ADMIN_TOKEN`。
+- 所有者登录账号（可使用邮箱）；
+- 12至256位密码；
+- `OWNER_INITIALIZATION_KEY`。
 
-初始化接口只允许在用户表为空时执行。创建成功后获得 HttpOnly、Secure、SameSite=Strict 会话 Cookie。
+初始化接口只允许在 `platform_accounts` 为空时执行。创建成功后使用 `__Host-` 前缀的 HttpOnly/Secure 会话 Cookie 与独立 CSRF Cookie。
 
 ## 6. 邀请、作品权限与撤回
 

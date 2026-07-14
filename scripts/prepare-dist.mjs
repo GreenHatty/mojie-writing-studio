@@ -1,4 +1,5 @@
 import { copyFileSync, existsSync, mkdirSync, readFileSync, renameSync, writeFileSync } from 'node:fs';
+import { createWorkerConfig } from './worker-config.mjs';
 
 if (!existsSync('dist/server/index.js')) {
   throw new Error('Expected Vinext worker output in ./dist/server/index.js');
@@ -20,35 +21,6 @@ if (typeof projectId !== 'string' || !projectId) {
 }
 writeFileSync('dist/.openai/hosting.json', `${JSON.stringify({ project_id: projectId }, null, 2)}\n`);
 
-const wrangler = {
-  name: process.env.CLOUDFLARE_WORKER_NAME || 'mojie-writing-studio',
-  compatibility_date: '2026-07-11',
-  compatibility_flags: ['nodejs_compat'],
-  main: 'server/index.js',
-  workers_dev: true,
-  assets: {
-    binding: 'ASSETS',
-    directory: 'client',
-    not_found_handling: 'none'
-  },
-  triggers: {
-    crons: [process.env.MOJIE_CRON_SCHEDULE || '*/15 * * * *']
-  }
-};
-
-if (process.env.CLOUDFLARE_D1_DATABASE_ID) {
-  wrangler.d1_databases = [{
-    binding: 'DB',
-    database_name: process.env.CLOUDFLARE_D1_DATABASE_NAME || 'mojie-writing-studio',
-    database_id: process.env.CLOUDFLARE_D1_DATABASE_ID,
-    migrations_dir: '../migrations'
-  }];
-}
-
-const r2Buckets = [];
-if (process.env.CLOUDFLARE_DOCX_BUCKET_NAME) {
-  r2Buckets.push({ binding: 'DOCX_BUCKET', bucket_name: process.env.CLOUDFLARE_DOCX_BUCKET_NAME });
-}
-if (r2Buckets.length) wrangler.r2_buckets = r2Buckets;
+const wrangler = createWorkerConfig(process.env);
 
 writeFileSync('dist/wrangler.json', `${JSON.stringify(wrangler, null, 2)}\n`);

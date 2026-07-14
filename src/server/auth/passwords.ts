@@ -1,10 +1,13 @@
 const encoder = new TextEncoder();
 
 export const PASSWORD_ALGORITHM = 'PBKDF2-HMAC-SHA-256' as const;
-export const PASSWORD_ITERATIONS = 600_000;
+// Cloudflare's hosted Workers runtime rejects Web Crypto PBKDF2 requests above
+// 100,000 iterations. Keep this explicit and versioned instead of silently
+// retrying with a weaker value at runtime.
+export const PASSWORD_ITERATIONS = 100_000;
 export const PASSWORD_SALT_BYTES = 16;
 const MIN_ACCEPTED_ITERATIONS = 100_000;
-const MAX_ACCEPTED_ITERATIONS = 1_500_000;
+const MAX_ACCEPTED_ITERATIONS = PASSWORD_ITERATIONS;
 
 export type StoredPassword = {
   algorithm: typeof PASSWORD_ALGORITHM;
