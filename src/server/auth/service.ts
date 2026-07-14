@@ -13,6 +13,7 @@ export type AuthRepository = {
   isOwnerInitialized(): Promise<boolean>;
   initializeOwner(user: AuthUser, initializedAt: string): Promise<void>;
   findByAccount(account: string): Promise<AuthUser | null>;
+  findById(userId: string): Promise<AuthUser | null>;
   updatePassword?(userId: string, password: StoredPassword): Promise<void>;
 };
 
@@ -27,6 +28,7 @@ class MemoryAuthRepository implements AuthRepository {
     this.initialized = true;
   }
   async findByAccount(account: string): Promise<AuthUser | null> { return this.users.get(account) ?? null; }
+  async findById(userId: string): Promise<AuthUser | null> { return [...this.users.values()].find((user) => user.id === userId) ?? null; }
   async updatePassword(userId: string, password: StoredPassword): Promise<void> {
     for (const [account, user] of this.users) if (user.id === userId) this.users.set(account, { ...user, password });
   }

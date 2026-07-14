@@ -1,6 +1,7 @@
 'use client';
 
 import Placeholder from '@tiptap/extension-placeholder';
+import type { JSONContent } from '@tiptap/core';
 import { EditorContent, useEditor } from '@tiptap/react';
 import StarterKit from '@tiptap/starter-kit';
 import { useEffect, useRef } from 'react';
@@ -8,8 +9,8 @@ import { validateSuggestionApplication, type EditorSelectionSnapshot } from '../
 
 type RichTextEditorProps = {
   chapterKey: string;
-  content: string;
-  onChange: (html: string, plainText: string) => void;
+  content: string | JSONContent;
+  onChange: (html: string, plainText: string, canonicalContent: JSONContent) => void;
 };
 
 type InsertTextEvent = CustomEvent<{ text: string }>;
@@ -48,6 +49,7 @@ function dispatchEditorContext(chapterKey: string, editor: NonNullable<ReturnTyp
 export function RichTextEditor({ chapterKey, content, onChange }: RichTextEditorProps) {
   const currentChapterKey = useRef(chapterKey);
   const editor = useEditor({
+    immediatelyRender: false,
     extensions: [
       StarterKit.configure({
         heading: { levels: [2, 3] }
@@ -62,7 +64,7 @@ export function RichTextEditor({ chapterKey, content, onChange }: RichTextEditor
       }
     },
     onUpdate: ({ editor: activeEditor }) => {
-      onChange(activeEditor.getHTML(), activeEditor.getText());
+      onChange(activeEditor.getHTML(), activeEditor.getText(), activeEditor.getJSON());
       dispatchEditorContext(currentChapterKey.current, activeEditor);
     },
     onSelectionUpdate: ({ editor: activeEditor }) => {

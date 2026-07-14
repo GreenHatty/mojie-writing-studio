@@ -8,6 +8,12 @@ export type ServerVolume = { id: string; workId: string; title: string; position
 export type ServerChapter = { id: string; workId: string; volumeId: string; title: string; canonicalContent: CanonicalContent; plainText: string; wordCount: number; revision: number; position: number };
 export type WorkSummary = Pick<ServerWork, 'id' | 'title' | 'kind' | 'status' | 'updatedAt'> & { role: 'WORK_OWNER' | WorkRole; totalWordCount: number };
 export type WorkGraph = { work: ServerWork; volume: ServerVolume; chapter: ServerChapter };
+export type WorkDirectoryChapter = Pick<ServerChapter, 'id' | 'workId' | 'volumeId' | 'title' | 'wordCount' | 'revision' | 'position'>;
+export type WorkDirectoryVolume = ServerVolume & { chapters: WorkDirectoryChapter[] };
+export type WorkDirectory = Pick<ServerWork, 'id' | 'title' | 'kind' | 'status' | 'updatedAt'> & {
+  role: 'WORK_OWNER' | WorkRole;
+  volumes: WorkDirectoryVolume[];
+};
 
 export function buildWorkGraph(ownerId: string, input: { title: string; kind: WorkKind }, updatedAt: string): WorkGraph {
   const work: ServerWork = { id: crypto.randomUUID(), ownerId, title: input.title.trim() || '未命名作品', kind: input.kind, status: 'DRAFT', updatedAt, deletedAt: null, deleteReason: null };

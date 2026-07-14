@@ -10,6 +10,7 @@ type DraftDatabase = DBSchema & {
 };
 
 export type UserDraftStoreOptions = { onLifecycleState?: DatabaseLifecycleListener; openTimeoutMs?: number };
+export type UserDraftStore = Awaited<ReturnType<typeof openUserDraftStore>>;
 
 export async function openUserDraftStore(userId: string, dek: Uint8Array, options: UserDraftStoreOptions = {}) {
   if (!userId || dek.byteLength !== 32) throw new Error('LOCAL_DRAFT_KEY_UNAVAILABLE');
@@ -68,6 +69,7 @@ export async function openUserDraftStore(userId: string, dek: Uint8Array, option
       const row = await database.get('drafts', chapterId);
       return row ? decryptLocalPayload<T>(key, row.payload, context('draft', chapterId)) : null;
     },
+    async removeDraft(chapterId: string): Promise<void> { assertOpen(); await database.delete('drafts', chapterId); },
     async enqueueSync(clientOperationId: string, chapterId: string, value: unknown): Promise<void> {
       assertOpen();
       await database.put('syncQueue', { clientOperationId, chapterId, payload: await encryptLocalPayload(key, value, context('sync', clientOperationId)) });
@@ -79,6 +81,7 @@ export async function openUserDraftStore(userId: string, dek: Uint8Array, option
     async removeSync(clientOperationId: string): Promise<void> { assertOpen(); await database.delete('syncQueue', clientOperationId); },
     async saveSetting(settingKey: string, value: unknown): Promise<void> { assertOpen(); await database.put('settings', { settingKey, payload: await encryptLocalPayload(key, value, context('setting', settingKey)) }); },
     async getSetting<T>(settingKey: string): Promise<T | null> { const row = await database.get('settings', settingKey); return row ? decryptLocalPayload<T>(key, row.payload, context('setting', settingKey)) : null; },
+    async removeSetting(settingKey: string): Promise<void> { assertOpen(); await database.delete('settings', settingKey); },
     async saveConflict(chapterId: string, value: unknown): Promise<void> { assertOpen(); await database.put('conflicts', { chapterId, payload: await encryptLocalPayload(key, value, context('conflict', chapterId)) }); },
     async getConflict<T>(chapterId: string): Promise<T | null> { const row = await database.get('conflicts', chapterId); return row ? decryptLocalPayload<T>(key, row.payload, context('conflict', chapterId)) : null; },
     close(): void {

@@ -61,6 +61,25 @@ input, select, textarea { color: var(--ink); }
 .dashboard-create > div > p:last-child { color: var(--muted); line-height: 1.7; }
 
 .studio-shell { display: grid; grid-template: 64px minmax(0, 1fr) / var(--left-column-width) minmax(460px, 1fr) var(--right-column-width); grid-template-areas: "topbar topbar topbar" "directory editor context"; min-height: 100vh; background: var(--canvas); }
+.directory-actions { display: flex; align-items: center; gap: 6px; }
+.volume-heading, .chapter-row { display: flex; align-items: center; min-width: 0; }
+.volume-heading { justify-content: space-between; gap: 8px; }
+.chapter-row { gap: 3px; }
+.chapter-row .chapter-link { flex: 1; min-width: 0; }
+.chapter-order-controls { display: inline-flex; gap: 2px; }
+.chapter-order-button { min-width: 25px; min-height: 25px; padding: 2px 5px; border: 0; border-radius: 6px; color: var(--muted); background: transparent; cursor: pointer; }
+.chapter-order-button:hover:not(:disabled) { color: var(--ink); background: var(--accent-soft); }
+.chapter-order-button:disabled { cursor: not-allowed; opacity: .42; }
+.column-width-control input { width: 100%; accent-color: var(--accent); }
+.work-search-panel { display: grid; gap: 12px; padding: 18px; }
+.work-search-panel label { display: grid; gap: 7px; color: var(--muted); font-size: 12px; }
+.work-search-panel input { width: 100%; min-width: 0; padding: 9px 10px; border: 1px solid var(--line); border-radius: 8px; color: var(--ink); background: var(--paper); }
+.work-search-panel > button { justify-self: start; padding: 8px 13px; border: 0; border-radius: 8px; color: white; background: var(--accent); cursor: pointer; }
+.work-search-panel ul { display: grid; gap: 8px; margin: 0; padding: 0; list-style: none; }
+.work-search-panel li button { display: grid; width: 100%; gap: 4px; padding: 10px; border: 1px solid var(--line); border-radius: 9px; color: inherit; text-align: left; background: var(--panel); cursor: pointer; }
+.work-search-panel li span, .work-search-panel li small { overflow: hidden; color: var(--muted); font-size: 12px; text-overflow: ellipsis; white-space: nowrap; }
+.chapter-heading-actions { display: inline-flex; flex-wrap: wrap; justify-content: flex-end; gap: 7px; }
+.danger-button { color: #9f3b34; }
 .studio-topbar { grid-area: topbar; z-index: 5; display: flex; align-items: center; gap: 18px; padding: 0 20px; border-bottom: 1px solid var(--line); background: color-mix(in srgb, var(--panel) 92%, transparent); backdrop-filter: blur(14px); }
 .brand-lockup { display: inline-flex; align-items: center; gap: 9px; padding: 0; border: 0; color: var(--ink); background: transparent; font-family: inherit; font-weight: 800; font-size: 17px; }
 .work-identity { display: grid; gap: 2px; min-width: 0; border-left: 1px solid var(--line); padding-left: 18px; }

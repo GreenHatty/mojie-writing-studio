@@ -35,4 +35,23 @@ describe('user draft store', () => {
     reopened.close();
     anotherAccount.close();
   });
+
+  it('removes only the requested draft after a confirmed cloud save', async () => {
+    const dek = crypto.getRandomValues(new Uint8Array(32));
+    const store = await openUserDraftStore('writer-remove', dek);
+    await store.saveDraft('chapter-1', { plainText: '已同步' });
+    await store.saveDraft('chapter-2', { plainText: '仍待同步' });
+    await store.removeDraft('chapter-1');
+    await expect(store.getDraft('chapter-1')).resolves.toBeNull();
+    await expect(store.getDraft('chapter-2')).resolves.toEqual({ plainText: '仍待同步' });
+    store.close();
+  });
+
+  it('removes an encrypted pending preference only after its cloud sync succeeds', async () => {
+    const store = await openUserDraftStore('writer-settings', crypto.getRandomValues(new Uint8Array(32)));
+    await store.saveSetting('pending-profile-settings', { theme: 'dark' });
+    await store.removeSetting('pending-profile-settings');
+    await expect(store.getSetting('pending-profile-settings')).resolves.toBeNull();
+    store.close();
+  });
 });

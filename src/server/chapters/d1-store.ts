@@ -19,6 +19,9 @@ type StoredOperation = {
   result_json: string | null;
 };
 
+const AUTOMATIC_SNAPSHOT_INTERVAL_MS = 5 * 60 * 1_000;
+const SIGNIFICANT_CHARACTER_DELTA = 500;
+
 function parseCanonicalContent(value: string): CanonicalContent {
   return normalizeCanonicalContent(JSON.parse(value) as CanonicalContent);
 }
@@ -81,6 +84,7 @@ export function createD1ChapterStore(database: D1Database): ChapterHandlerStore 
       const canonicalJson = JSON.stringify(canonical);
       const plainText = canonicalPlainText(canonical);
       const wordCount = Array.from(plainText.replace(/\s/g, '')).length;
+      const currentWordCount = Array.from(current.plain_text.replace(/\s/g, '')).length;
 
       if (Number(current.revision) !== input.baseRevision) {
         const currentVersionId = crypto.randomUUID();
@@ -106,18 +110,41 @@ export function createD1ChapterStore(database: D1Database): ChapterHandlerStore 
 
       const nextRevision = input.baseRevision + 1;
       const result: ChapterSaveResult = { kind: 'saved', revision: nextRevision };
+      const previousAutomatic = await database.prepare("SELECT created_at FROM chapter_versions WHERE chapter_id = ? AND reason = 'AUTO' ORDER BY created_at DESC LIMIT 1")
+        .bind(current.id).first<{ created_at: string }>();
+      const automaticSnapshotDue = Math.abs(wordCount - currentWordCount) >= SIGNIFICANT_CHARACTER_DELTA
+        || (previousAutomatic ? Date.parse(input.savedAt) - Date.parse(previousAutomatic.created_at) >= AUTOMATIC_SNAPSHOT_INTERVAL_MS : false);
+      const dailyAddition = Math.max(0, wordCount - currentWordCount);
+      const writingDate = new Date(input.savedAt).toISOString().slice(0, 10);
+      const statements = [
+        ...(automaticSnapshotDue ? [database.prepare('INSERT INTO chapter_versions (id, chapter_id, canonical_content, plain_text, word_count, source_revision, reason, created_by, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)').bind(crypto.randomUUID(), current.id, current.canonical_content, current.plain_text, currentWordCount, current.revision, 'AUTO', input.userId, input.savedAt)] : []),
+        database.prepare('UPDATE chapters SET canonical_content = ?, plain_text = ?, word_count = ?, revision = ?, updated_at = ? WHERE id = ? AND revision = ?').bind(canonicalJson, plainText, wordCount, nextRevision, input.savedAt, input.chapterId, input.baseRevision),
+        database.prepare('UPDATE works SET updated_at = ?, version = version + 1 WHERE id = ?').bind(input.savedAt, current.work_id),
+        database.prepare(`INSERT INTO writing_sessions (user_id, date, added_characters, updated_at) VALUES (?, ?, ?, ?)
+          ON CONFLICT(user_id, date) DO UPDATE SET added_characters = writing_sessions.added_characters + excluded.added_characters, updated_at = excluded.updated_at`).bind(input.userId, writingDate, dailyAddition, input.savedAt),
+        database.prepare('INSERT INTO sync_operations (client_operation_id, user_id, chapter_id, request_digest, result_json, created_at) VALUES (?, ?, ?, ?, ?, ?)').bind(input.clientOperationId, input.userId, input.chapterId, requestDigest, JSON.stringify(result), input.savedAt)
+      ];
       try {
-        await database.batch([
-          database.prepare('INSERT INTO chapter_versions (id, chapter_id, canonical_content, plain_text, word_count, source_revision, reason, created_by, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)').bind(crypto.randomUUID(), current.id, current.canonical_content, current.plain_text, Array.from(current.plain_text.replace(/\s/g, '')).length, current.revision, 'AUTO', input.userId, input.savedAt),
-          database.prepare('UPDATE chapters SET canonical_content = ?, plain_text = ?, word_count = ?, revision = ?, updated_at = ? WHERE id = ? AND revision = ?').bind(canonicalJson, plainText, wordCount, nextRevision, input.savedAt, input.chapterId, input.baseRevision),
-          database.prepare('INSERT INTO sync_operations (client_operation_id, user_id, chapter_id, request_digest, result_json, created_at) VALUES (?, ?, ?, ?, ?, ?)').bind(input.clientOperationId, input.userId, input.chapterId, requestDigest, JSON.stringify(result), input.savedAt)
-        ]);
+        await database.batch(statements);
       } catch (error) {
         const replay = await existingOperation(database, input, requestDigest);
         if (replay) return replay;
         throw error;
       }
       return result;
+    },
+
+    async rename(userId, chapterId, title) {
+      const row = await database.prepare(
+        "SELECT c.id, c.work_id, c.title, c.canonical_content, c.plain_text, c.revision FROM chapters c JOIN works w ON w.id = c.work_id LEFT JOIN work_access wa ON wa.work_id = w.id AND wa.user_id = ? AND wa.revoked_at IS NULL WHERE c.id = ? AND c.deleted_at IS NULL AND w.deleted_at IS NULL AND (w.owner_id = ? OR wa.role = 'EDITOR')"
+      ).bind(userId, chapterId, userId).first<ChapterRow>();
+      if (!row) throw new AppError('NOT_FOUND', 404);
+      const updatedAt = new Date().toISOString();
+      await database.batch([
+        database.prepare('UPDATE chapters SET title = ?, updated_at = ? WHERE id = ?').bind(title, updatedAt, chapterId),
+        database.prepare('UPDATE works SET updated_at = ?, version = version + 1 WHERE id = ?').bind(updatedAt, row.work_id)
+      ]);
+      return { ...mapChapter(row), title };
     }
   };
 }
