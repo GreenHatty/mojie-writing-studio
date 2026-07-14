@@ -169,6 +169,23 @@ async function main() {
     const encryptedTarget = JSON.parse(run(['d1', 'execute', database, '--local', '--config', config, '--command', `SELECT CAST(config_ciphertext AS TEXT) AS ciphertext,CAST(config_iv AS TEXT) AS iv FROM backup_targets WHERE id='${backupTarget.body.targetId}'`, '--json']))[0]?.results?.[0];
     if (!encryptedTarget || JSON.stringify(encryptedTarget).includes('test-only-secret-password') || JSON.stringify(encryptedTarget).includes('test-writer')) throw new Error('Backup credentials were stored in plaintext');
 
+    const migrationId = 'acceptance-migration';
+    const migrationSource = { works: [{ id: 'legacy-work', title: '旧格式验收作品', kind: 'long', volumes: [{ id: 'legacy-volume', title: '旧卷', chapters: [{ id: 'legacy-chapter', title: '旧章', content: '<p>旧正文<strong>保留</strong></p>' }] }] }] };
+    const migrationPreview = await request('/api/core/migrations/preview', { method: 'POST', headers, body: JSON.stringify({ migrationId, source: migrationSource }) });
+    if (migrationPreview.response.status !== 201 || migrationPreview.body.repeated !== false) throw new Error('Migration preview failed');
+    const repeatedPreview = await request('/api/core/migrations/preview', { method: 'POST', headers, body: JSON.stringify({ migrationId, source: migrationSource }) });
+    if (repeatedPreview.response.status !== 201 || repeatedPreview.body.repeated !== true) throw new Error('Repeated migration preview was not idempotent');
+    const migrationExecute = await request(`/api/core/migrations/${migrationId}/execute`, { method: 'POST', headers, body: JSON.stringify({ confirmed: true, source: migrationSource }) });
+    if (migrationExecute.response.status !== 200 || migrationExecute.body.run?.status !== 'COMPLETED' || migrationExecute.body.repeated !== false) throw new Error('Migration execution failed');
+    const repeatedExecute = await request(`/api/core/migrations/${migrationId}/execute`, { method: 'POST', headers, body: JSON.stringify({ confirmed: true, source: migrationSource }) });
+    if (repeatedExecute.response.status !== 200 || repeatedExecute.body.repeated !== true) throw new Error('Repeated migration execution duplicated imports');
+    const migratedChapter = JSON.parse(run(['d1', 'execute', database, '--local', '--config', config, '--command', `SELECT legacy_html,canonical_content FROM chapters WHERE id='migrated:${migrationId}:legacy-work:chapter:legacy-chapter'`, '--json']))[0]?.results?.[0];
+    if (!migratedChapter?.legacy_html?.includes('旧正文') || !migratedChapter?.canonical_content?.includes('schemaVersion')) throw new Error('Legacy HTML backup or canonical migration content was lost');
+    const migrationRollback = await request(`/api/core/migrations/${migrationId}/rollback`, { method: 'POST', headers });
+    if (migrationRollback.response.status !== 200 || migrationRollback.body.status !== 'ROLLED_BACK') throw new Error('Per-work migration rollback failed');
+    const rolledBackWork = JSON.parse(run(['d1', 'execute', database, '--local', '--config', config, '--command', `SELECT deleted_at,delete_reason FROM works WHERE id='migrated:${migrationId}:legacy-work'`, '--json']))[0]?.results?.[0];
+    if (!rolledBackWork?.deleted_at || rolledBackWork.delete_reason !== 'migration_rollback') throw new Error('Migration rollback did not retain the imported work as a recoverable soft delete');
+
     const writerToken = 'test-only-writer-session-token';
     const writerCsrf = 'test-only-writer-csrf';
     const now = new Date().toISOString();
@@ -177,6 +194,8 @@ async function main() {
     run(['d1', 'execute', database, '--local', '--config', config, '--command', `INSERT INTO platform_accounts (id, account_identifier, platform_role, password_algorithm, password_iterations, password_salt, password_digest, created_at, updated_at) VALUES ('accept-writer', 'writer-acceptance@example.test', 'WRITER', 'PBKDF2-SHA-256', 600000, X'00', X'00', '${now}', '${now}'); INSERT INTO platform_sessions (id, token_hash, user_id, csrf_state, expires_at, absolute_expires_at, last_seen_at, created_at, updated_at) VALUES ('accept-writer-session', '${await tokenDigest(writerToken)}', 'accept-writer', '${writerCsrf}', '${expires}', '${absoluteExpires}', '${now}', '${now}', '${now}');`]);
     const writerCookie = `mojie-dev-session=${writerToken}; mojie-dev-csrf=${writerCsrf}`;
     const writerHeaders = { Origin: origin, Cookie: writerCookie, 'X-CSRF-Token': writerCsrf, 'Content-Type': 'application/json' };
+    const hiddenMigration = await request('/api/core/migrations/preview', { method: 'POST', headers: writerHeaders, body: JSON.stringify({ migrationId, source: migrationSource }) });
+    if (hiddenMigration.response.status !== 404) throw new Error('Migration run leaked across accounts');
     const writerRankingRead = await request('/api/core/rankings/sources', { headers: { Cookie: writerCookie } });
     if (writerRankingRead.response.status !== 200 || writerRankingRead.body.sources?.length !== 1) throw new Error('Authenticated writer could not read public ranking summaries');
     const writerRankingWrite = await request('/api/core/rankings/sources', { method: 'POST', headers: writerHeaders, body: JSON.stringify({ platform: 'qidian', sourceUrl: 'https://www.qidian.com/rank/', authorizationNote: '越权测试来源' }) });
@@ -214,7 +233,7 @@ async function main() {
     if (logout.response.status !== 200) throw new Error('Logout failed');
     const afterLogout = await request('/api/core/works', { headers: { Cookie: cookie } });
     if (afterLogout.response.status !== 401) throw new Error('Revoked session retained protected work access');
-    process.stdout.write('Local core Worker acceptance passed (auth, encrypted-draft key, private writing, worldbuilding, manual rankings, publication records, encrypted optional backups, idempotent saves, conflict copies, and logout revocation).\n');
+    process.stdout.write('Local core Worker acceptance passed (auth, encrypted drafts, private writing, worldbuilding, idempotent migration and rollback, manual rankings, publication records, encrypted optional backups, conflicts, and logout revocation).\n');
   } finally {
     if (!worker.killed) worker.kill('SIGTERM');
     if (process.platform === 'win32' && worker.pid) spawnSync('taskkill', ['/pid', String(worker.pid), '/t', '/f'], { stdio: 'ignore' });

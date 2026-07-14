@@ -290,7 +290,7 @@ export async function handleMojieAuthApi(request, env) {
     return responseError('接口不存在。', 404, 'not_found');
   } catch (error) {
     if (error instanceof HttpError) return responseError(error.message, error.status, error.code, error.details);
-    console.error('Mojie auth API error', error);
+    console.error(JSON.stringify({ event: 'legacy_auth_error', code: 'internal_error' }));
     return responseError('服务器内部错误。', 500, 'internal_error');
   }
 }

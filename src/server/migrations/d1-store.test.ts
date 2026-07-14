@@ -13,4 +13,20 @@ describe('D1 migration executor', () => {
     expect(sql.join('\n')).toContain('legacy_html');
     expect(sql.join('\n')).not.toContain('DELETE FROM cloud_documents');
   });
+
+  it('names volume and chapter targets with the legacy work id to prevent cross-work collisions', async () => {
+    const bound: unknown[][] = [];
+    const database = {
+      prepare() { return { bind(...values: unknown[]) { bound.push(values); return this; }, first: async () => null, run: async () => ({ meta: { changes: 1 } }) }; },
+      batch: async () => undefined
+    } as unknown as D1Database;
+    const executor = createD1MigrationExecutor(database);
+    await executor.importWork('u1', 'migration', { id: 'work-a', title: '甲', volumes: [{ id: 'shared-volume', title: '卷', chapters: [{ id: 'shared-chapter', title: '章', content: '<p>甲</p>' }] }] }, 'hash-a');
+    await executor.importWork('u1', 'migration', { id: 'work-b', title: '乙', volumes: [{ id: 'shared-volume', title: '卷', chapters: [{ id: 'shared-chapter', title: '章', content: '<p>乙</p>' }] }] }, 'hash-b');
+    const serialized = JSON.stringify(bound);
+    expect(serialized).toContain('migrated:migration:work-a:volume:shared-volume');
+    expect(serialized).toContain('migrated:migration:work-b:volume:shared-volume');
+    expect(serialized).toContain('migrated:migration:work-a:chapter:shared-chapter');
+    expect(serialized).toContain('migrated:migration:work-b:chapter:shared-chapter');
+  });
 });

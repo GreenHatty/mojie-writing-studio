@@ -50,10 +50,10 @@ export function createD1MigrationExecutor(database: D1Database) {
         database.prepare('INSERT INTO works (id, owner_id, title, kind, status, version, created_at, updated_at) VALUES (?, ?, ?, ?, ?, 0, ?, ?)').bind(targetWorkId, userId, work.title, work.kind ?? 'long', 'DRAFT', timestamp, timestamp)
       ];
       for (const [volumePosition, volume] of work.volumes.entries()) {
-        const volumeId = `migrated:${migrationId}:${volume.id}`;
+        const volumeId = `migrated:${migrationId}:${work.id}:volume:${volume.id}`;
         statements.push(database.prepare('INSERT INTO volumes (id, work_id, title, position, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?)').bind(volumeId, targetWorkId, volume.title, volumePosition, timestamp, timestamp));
         for (const [chapterPosition, chapter] of volume.chapters.entries()) {
-          const chapterId = `migrated:${migrationId}:${chapter.id}`;
+          const chapterId = `migrated:${migrationId}:${work.id}:chapter:${chapter.id}`;
           const converted = legacyHtmlToCanonical(chapter.content);
           const legacyContentHash = await sourceDigest(chapter.content);
           statements.push(database.prepare('INSERT INTO chapters (id, work_id, volume_id, title, schema_version, canonical_content, plain_text, legacy_html, legacy_content_hash, word_count, status, position, revision, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0, ?, ?)')
