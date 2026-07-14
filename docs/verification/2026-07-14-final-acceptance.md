@@ -6,6 +6,7 @@
 - 旧兼容 Worker 和核心运营 Worker 的未知异常日志改为固定结构化错误码，不再传入原始 `Error` 对象。
 - 运营抽屉新增明确的可访问名称、自动焦点和 Escape 关闭。
 - 增加提交内容秘密扫描、缓存策略、Cookie、日志、R2-off、迁移与全局 DOM 监听回归审计。
+- 将 Next 与 Vite 的 PostCSS 统一覆盖为 `8.5.16`，消除旧版 CSS stringify XSS 公告；生产与完整依赖审计均为 0 漏洞。
 
 ## 安全验收
 
@@ -43,6 +44,8 @@
 - `npm run typecheck`
 - `npm test`
 - `npm run test:security-final`
+- `npm audit --omit=dev --audit-level=moderate`
+- `npm audit --audit-level=moderate`
 - `npm run build`
 - `npm run test:worker-entry`
 - `npm run test:d1-local`
