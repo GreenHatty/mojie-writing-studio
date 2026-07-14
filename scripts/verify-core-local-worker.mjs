@@ -20,6 +20,11 @@ function cookies(response) {
   return values.map((value) => value.split(';', 1)[0]).join('; ');
 }
 
+async function tokenDigest(token) {
+  const digest = new Uint8Array(await crypto.subtle.digest('SHA-256', new TextEncoder().encode(token)));
+  return Buffer.from(digest).toString('base64url');
+}
+
 async function request(path, init = {}) {
   const response = await fetch(`${origin}${path}`, init);
   const contentType = response.headers.get('content-type') ?? '';
@@ -44,7 +49,7 @@ async function main() {
   // This named database exists only under test/.wrangler. Resetting its
   // foundation rows makes the acceptance executable repeatable without
   // touching any user or remote D1 data.
-  run(['d1', 'execute', database, '--local', '--config', config, '--command', 'DELETE FROM chapter_conflicts; DELETE FROM chapter_versions; DELETE FROM chapter_notes; DELETE FROM chapter_comments_v2; DELETE FROM change_suggestions; DELETE FROM sync_operations; DELETE FROM chapters; DELETE FROM volumes; DELETE FROM work_access; DELETE FROM work_invitations; DELETE FROM writing_goals; DELETE FROM writing_sessions; DELETE FROM migration_work_items; DELETE FROM migration_runs; DELETE FROM profile_settings; DELETE FROM platform_audit_logs; DELETE FROM platform_invitations; DELETE FROM user_local_draft_keys; DELETE FROM platform_sessions; DELETE FROM auth_rate_limit_buckets; DELETE FROM works; DELETE FROM platform_accounts;']);
+  run(['d1', 'execute', database, '--local', '--config', config, '--command', 'DELETE FROM project_entities; DELETE FROM chapter_conflicts; DELETE FROM chapter_versions; DELETE FROM chapter_notes; DELETE FROM chapter_comments_v2; DELETE FROM change_suggestions; DELETE FROM sync_operations; DELETE FROM chapters; DELETE FROM volumes; DELETE FROM work_access; DELETE FROM work_invitations; DELETE FROM writing_goals; DELETE FROM writing_sessions; DELETE FROM migration_work_items; DELETE FROM migration_runs; DELETE FROM profile_settings; DELETE FROM platform_audit_logs; DELETE FROM platform_invitations; DELETE FROM user_local_draft_keys; DELETE FROM platform_sessions; DELETE FROM auth_rate_limit_buckets; DELETE FROM works; DELETE FROM platform_accounts;']);
   const worker = spawn(process.execPath, [wrangler, 'dev', '--config', config, '--local', '--port', String(port)], {
     cwd: process.cwd(),
     stdio: ['ignore', 'pipe', 'pipe']
@@ -131,6 +136,37 @@ async function main() {
     const stats = await request('/api/core/writing-stats', { headers: { Cookie: cookie } });
     if (stats.response.status !== 200 || stats.body.stats?.addedCharacters < 1) throw new Error('Writing stats failed');
 
+    const character = await request(`/api/core/works/${encodeURIComponent(workId)}/entities`, { method: 'POST', headers, body: JSON.stringify({ kind: 'character', title: '验收人物', summary: '本地设定验收', fields: { aliases: ['阿验'] } }) });
+    if (character.response.status !== 201 || !character.body.entity?.id) throw new Error('Project character creation failed');
+    const timeline = await request(`/api/core/works/${encodeURIComponent(workId)}/entities`, { method: 'POST', headers, body: JSON.stringify({ kind: 'timeline', title: '验收事件', summary: '', fields: { startAt: '2026-07-14T00:00:00.000Z', endAt: '2026-07-14T01:00:00.000Z', characterIds: [character.body.entity.id] } }) });
+    if (timeline.response.status !== 201) throw new Error('Timeline entity creation failed');
+    const referencedDelete = await request(`/api/core/works/${encodeURIComponent(workId)}/entities/${encodeURIComponent(character.body.entity.id)}`, { method: 'DELETE', headers, body: '{}' });
+    if (referencedDelete.response.status !== 409 || referencedDelete.body.error?.code !== 'ENTITY_REFERENCED') throw new Error('Referenced entity was deleted without confirmation');
+    const confirmedDelete = await request(`/api/core/works/${encodeURIComponent(workId)}/entities/${encodeURIComponent(character.body.entity.id)}`, { method: 'DELETE', headers, body: JSON.stringify({ confirmReferences: true, reason: '本地设定验收' }) });
+    if (confirmedDelete.response.status !== 200) throw new Error('Confirmed entity trash failed');
+    const deletedEntities = await request(`/api/core/works/${encodeURIComponent(workId)}/entities?includeDeleted=true`, { headers: { Cookie: cookie } });
+    if (!deletedEntities.body.entities?.some((entity) => entity.id === character.body.entity.id && entity.deletedAt)) throw new Error('Deleted project entity was not retained');
+    const restoredEntity = await request(`/api/core/works/${encodeURIComponent(workId)}/entities/${encodeURIComponent(character.body.entity.id)}/restore`, { method: 'POST', headers });
+    if (restoredEntity.response.status !== 200) throw new Error('Project entity restore failed');
+
+    const writerToken = 'test-only-writer-session-token';
+    const writerCsrf = 'test-only-writer-csrf';
+    const now = new Date().toISOString();
+    const expires = new Date(Date.now() + 60 * 60_000).toISOString();
+    const absoluteExpires = new Date(Date.now() + 2 * 60 * 60_000).toISOString();
+    run(['d1', 'execute', database, '--local', '--config', config, '--command', `INSERT INTO platform_accounts (id, account_identifier, platform_role, password_algorithm, password_iterations, password_salt, password_digest, created_at, updated_at) VALUES ('accept-writer', 'writer-acceptance@example.test', 'WRITER', 'PBKDF2-SHA-256', 600000, X'00', X'00', '${now}', '${now}'); INSERT INTO platform_sessions (id, token_hash, user_id, csrf_state, expires_at, absolute_expires_at, last_seen_at, created_at, updated_at) VALUES ('accept-writer-session', '${await tokenDigest(writerToken)}', 'accept-writer', '${writerCsrf}', '${expires}', '${absoluteExpires}', '${now}', '${now}', '${now}');`]);
+    const writerCookie = `mojie-dev-session=${writerToken}; mojie-dev-csrf=${writerCsrf}`;
+    const hiddenFromWriter = await request(`/api/core/works/${encodeURIComponent(workId)}/entities`, { headers: { Cookie: writerCookie } });
+    if (hiddenFromWriter.response.status !== 404) throw new Error('Unrelated writer could read private project entities');
+    run(['d1', 'execute', database, '--local', '--config', config, '--command', `INSERT INTO work_access (work_id, user_id, role, created_at) VALUES ('${workId}', 'accept-writer', 'VIEWER', '${now}');`]);
+    const visibleToViewer = await request(`/api/core/works/${encodeURIComponent(workId)}/entities`, { headers: { Cookie: writerCookie } });
+    if (visibleToViewer.response.status !== 200 || !visibleToViewer.body.entities?.length) throw new Error('Authorized viewer could not read project entities');
+    const viewerWrite = await request(`/api/core/works/${encodeURIComponent(workId)}/entities`, { method: 'POST', headers: { Origin: origin, Cookie: writerCookie, 'X-CSRF-Token': writerCsrf, 'Content-Type': 'application/json' }, body: JSON.stringify({ kind: 'character', title: '越权人物', fields: {} }) });
+    if (viewerWrite.response.status !== 403) throw new Error('Viewer could write project entities');
+    run(['d1', 'execute', database, '--local', '--config', config, '--command', `UPDATE work_access SET role = 'EDITOR' WHERE work_id = '${workId}' AND user_id = 'accept-writer';`]);
+    const editorWrite = await request(`/api/core/works/${encodeURIComponent(workId)}/entities`, { method: 'POST', headers: { Origin: origin, Cookie: writerCookie, 'X-CSRF-Token': writerCsrf, 'Content-Type': 'application/json' }, body: JSON.stringify({ kind: 'character', title: '编辑新增人物', fields: {} }) });
+    if (editorWrite.response.status !== 201) throw new Error('Authorized editor could not write project entities');
+
     const replay = await request(`/api/core/chapters/${encodeURIComponent(chapterId)}`, {
       method: 'PUT', headers,
       body: JSON.stringify({ baseRevision: 0, clientOperationId: 'acceptance-save-1', canonicalContent: { type: 'doc', content: [{ type: 'paragraph', content: [{ type: 'text', text: '本地验收正文' }] }] } })
@@ -147,7 +183,7 @@ async function main() {
     if (logout.response.status !== 200) throw new Error('Logout failed');
     const afterLogout = await request('/api/core/works', { headers: { Cookie: cookie } });
     if (afterLogout.response.status !== 401) throw new Error('Revoked session retained protected work access');
-    process.stdout.write('Local core Worker acceptance passed (auth, encrypted-draft key, settings, directory, notes, versions, search, trash, stats, idempotent save, conflict copy, and logout revocation).\n');
+    process.stdout.write('Local core Worker acceptance passed (auth, encrypted-draft key, settings, directory, notes, versions, search, trash, permission-isolated worldbuilding, reference-aware restore, stats, idempotent save, conflict copy, and logout revocation).\n');
   } finally {
     if (!worker.killed) worker.kill('SIGTERM');
     if (process.platform === 'win32' && worker.pid) spawnSync('taskkill', ['/pid', String(worker.pid), '/t', '/f'], { stdio: 'ignore' });

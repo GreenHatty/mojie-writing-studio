@@ -1,7 +1,9 @@
 'use client';
 
 import Placeholder from '@tiptap/extension-placeholder';
-import type { JSONContent } from '@tiptap/core';
+import { Extension, type JSONContent } from '@tiptap/core';
+import { Plugin, PluginKey } from '@tiptap/pm/state';
+import { Decoration, DecorationSet } from '@tiptap/pm/view';
 import { EditorContent, useEditor } from '@tiptap/react';
 import StarterKit from '@tiptap/starter-kit';
 import { useEffect, useRef } from 'react';
@@ -11,6 +13,7 @@ type RichTextEditorProps = {
   chapterKey: string;
   content: string | JSONContent;
   onChange: (html: string, plainText: string, canonicalContent: JSONContent) => void;
+  highlightTerms?: string[];
 };
 
 type InsertTextEvent = CustomEvent<{ text: string }>;
@@ -46,7 +49,43 @@ function dispatchEditorContext(chapterKey: string, editor: NonNullable<ReturnTyp
   window.dispatchEvent(new CustomEvent<EditorSelectionSnapshot>('mojie:editor-context', { detail }));
 }
 
-export function RichTextEditor({ chapterKey, content, onChange }: RichTextEditorProps) {
+const entityHighlightKey = new PluginKey<{ terms: string[]; decorations: DecorationSet }>('entity-mentions');
+
+function buildEntityDecorations(document: Parameters<typeof DecorationSet.create>[0], terms: string[]): DecorationSet {
+  const decorations: Decoration[] = [];
+  const uniqueTerms = [...new Set(terms.map((term) => term.trim()).filter((term) => term.length >= 2))].sort((left, right) => right.length - left.length).slice(0, 200);
+  document.descendants((node, position) => {
+    if (!node.isText || !node.text) return;
+    for (const term of uniqueTerms) {
+      let offset = 0;
+      while ((offset = node.text.indexOf(term, offset)) >= 0) {
+        decorations.push(Decoration.inline(position + offset, position + offset + term.length, { class: 'entity-mention-highlight', 'data-entity-term': term }));
+        offset += term.length;
+      }
+    }
+  });
+  return DecorationSet.create(document, decorations);
+}
+
+const EntityMentions = Extension.create({
+  name: 'entityMentions',
+  addProseMirrorPlugins() {
+    return [new Plugin({
+      key: entityHighlightKey,
+      state: {
+        init: (_configuration, state) => ({ terms: [] as string[], decorations: DecorationSet.empty }),
+        apply(transaction, previous) {
+          const meta = transaction.getMeta(entityHighlightKey) as { terms?: string[] } | undefined;
+          const terms = meta?.terms ?? previous.terms;
+          return transaction.docChanged || meta ? { terms, decorations: buildEntityDecorations(transaction.doc, terms) } : previous;
+        }
+      },
+      props: { decorations: (state) => entityHighlightKey.getState(state)?.decorations ?? null }
+    })];
+  }
+});
+
+export function RichTextEditor({ chapterKey, content, onChange, highlightTerms = [] }: RichTextEditorProps) {
   const currentChapterKey = useRef(chapterKey);
   const editor = useEditor({
     immediatelyRender: false,
@@ -54,7 +93,8 @@ export function RichTextEditor({ chapterKey, content, onChange }: RichTextEditor
       StarterKit.configure({
         heading: { levels: [2, 3] }
       }),
-      Placeholder.configure({ placeholder: '从这一行开始写。' })
+      Placeholder.configure({ placeholder: '从这一行开始写。' }),
+      EntityMentions
     ],
     content,
     editorProps: {
@@ -78,6 +118,11 @@ export function RichTextEditor({ chapterKey, content, onChange }: RichTextEditor
     editor.commands.setContent(content, { emitUpdate: false });
     dispatchEditorContext(chapterKey, editor);
   }, [chapterKey, content, editor]);
+
+  useEffect(() => {
+    if (!editor) return;
+    editor.view.dispatch(editor.state.tr.setMeta(entityHighlightKey, { terms: highlightTerms }));
+  }, [editor, highlightTerms]);
 
   useEffect(() => {
     if (!editor) return;

@@ -6,6 +6,10 @@ export type GraphNode = {
   kind: GraphNodeKind;
   x?: number;
   y?: number;
+  variant?: 'node' | 'region';
+  width?: number;
+  height?: number;
+  layer?: string;
 };
 
 export type PositionedGraphNode = GraphNode & {
@@ -77,8 +81,12 @@ export function buildMapSvg(
   });
   const nodeMarkup = positioned.map((node) => {
     const shape = node.kind === 'location' ? 'rect' : 'circle';
+    const regionWidth = Math.max(84, Math.min(360, Number(node.width) || 84));
+    const regionHeight = Math.max(40, Math.min(240, Number(node.height) || 40));
+    const nodeWidth = node.variant === 'region' ? regionWidth : 84;
+    const nodeHeight = node.variant === 'region' ? regionHeight : 40;
     const graphic = shape === 'rect'
-      ? `<rect x="${node.x - 42}" y="${node.y - 20}" width="84" height="40" rx="10" fill="white" stroke="currentColor"/>`
+      ? `<rect x="${node.x - nodeWidth / 2}" y="${node.y - nodeHeight / 2}" width="${nodeWidth}" height="${nodeHeight}" rx="${node.variant === 'region' ? 18 : 10}" fill="${node.variant === 'region' ? '#e8f1ec' : 'white'}" fill-opacity="${node.variant === 'region' ? '.7' : '1'}" stroke="currentColor" stroke-dasharray="${node.variant === 'region' ? '6 4' : 'none'}"/>`
       : `<circle cx="${node.x}" cy="${node.y}" r="27" fill="white" stroke="currentColor"/>`;
     return `<g data-node-id="${escapeXml(node.id)}">${graphic}<text x="${node.x}" y="${node.y + 4}" text-anchor="middle" font-size="12">${escapeXml(node.label)}</text></g>`;
   });

@@ -33,4 +33,12 @@ describe('buildMapSvg', () => {
     expect(svg).not.toContain('无效');
     expect(svg).not.toContain('<王城>');
   });
+
+  it('renders bounded region layers as labelled dashed areas', () => {
+    const svg = buildMapSvg([{ id: 'region', label: '北境', kind: 'location', variant: 'region', width: 180, height: 90, x: 220, y: 140 }], [], { width: 500, height: 300, title: '区域图' });
+    expect(svg).toContain('width="180"');
+    expect(svg).toContain('height="90"');
+    expect(svg).toContain('stroke-dasharray="6 4"');
+    expect(svg).toContain('北境');
+  });
 });

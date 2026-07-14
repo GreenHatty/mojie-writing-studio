@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { createProjectEntity, detectTimelineConflicts, type TimelineEvent } from './project-model';
+import { createProjectEntity, detectCharacterLifeConflicts, detectTimelineConflicts, type TimelineEvent } from './project-model';
 
 describe('createProjectEntity', () => {
   it('creates an editable project record with stable ownership metadata', () => {
@@ -57,5 +57,16 @@ describe('detectTimelineConflicts', () => {
       characterIds: ['character-1'], locationId: 'location-a'
     };
     expect(detectTimelineConflicts([{ ...base }, { ...base, id: 'event-2', title: '另一视角' }])).toHaveLength(0);
+  });
+
+  it('detects a dependent event that begins before its predecessor ends', () => {
+    const predecessor: TimelineEvent = { id: 'a', ownerId: 'owner', workId: 'work', kind: 'timeline', title: '前置', summary: '', fields: {}, createdAt: '', updatedAt: '', startAt: '2026-01-01T08:00:00Z', endAt: '2026-01-01T10:00:00Z', characterIds: [] };
+    const dependent: TimelineEvent = { ...predecessor, id: 'b', title: '后续', startAt: '2026-01-01T09:00:00Z', endAt: '2026-01-01T11:00:00Z', predecessorIds: ['a'] };
+    expect(detectTimelineConflicts([predecessor, dependent])).toContainEqual(expect.objectContaining({ code: 'predecessor-order', eventIds: ['a', 'b'] }));
+  });
+
+  it('detects appearances outside a character life range', () => {
+    const event: TimelineEvent = { id: 'event', ownerId: 'owner', workId: 'work', kind: 'timeline', title: '旧事', summary: '', fields: {}, createdAt: '', updatedAt: '', startAt: '1999-01-01T00:00:00Z', endAt: '1999-01-02T00:00:00Z', characterIds: ['character'] };
+    expect(detectCharacterLifeConflicts([event], [{ id: 'character', title: '沈青', birthDate: '2000-01-01T00:00:00Z' }])).toContainEqual(expect.objectContaining({ code: 'before-birth', characterId: 'character' }));
   });
 });

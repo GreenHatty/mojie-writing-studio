@@ -2,6 +2,7 @@ import { expect, test, type Page, type Route } from '@playwright/test';
 
 type ChapterState = { id: string; workId: string; volumeId: string; title: string; canonicalContent: Record<string, unknown>; plainText: string; revision: number; wordCount: number; position: number };
 type WorkState = { id: string; title: string; kind: 'long' | 'short' | 'essay'; volumeId: string; chapters: ChapterState[] };
+type EntityState = { id: string; workId: string; kind: string; title: string; summary: string; fields: Record<string, unknown>; createdBy: string; updatedBy: string; createdAt: string; updatedAt: string; deletedAt?: string };
 
 function plainText(node: unknown): string {
   if (!node || typeof node !== 'object') return '';
@@ -16,7 +17,7 @@ async function json(route: Route, value: unknown, status = 200): Promise<void> {
 }
 
 async function installCoreApi(page: Page, userId: string) {
-  const state: { work: WorkState | null; rankingRequests: number } = { work: null, rankingRequests: 0 };
+  const state: { work: WorkState | null; rankingRequests: number; entities: EntityState[] } = { work: null, rankingRequests: 0, entities: [] };
   await page.addInitScript((id) => { indexedDB.deleteDatabase(`mojie-writing-studio:${id}`); }, userId);
   await page.route('**/api/rankings/**', async (route) => { state.rankingRequests += 1; await json(route, { error: 'UNEXPECTED_RANKING_REQUEST' }, 500); });
   await page.route('**/api/core/**', async (route) => {
@@ -45,6 +46,26 @@ async function installCoreApi(page: Page, userId: string) {
       state.work.chapters.push(chapter);
       return json(route, { chapter }, 201);
     }
+    if (/^\/api\/core\/works\/[^/]+\/entities$/u.test(path) && method === 'GET') {
+      const includeDeleted = url.searchParams.get('includeDeleted') === 'true';
+      const kind = url.searchParams.get('kind');
+      return json(route, { entities: state.entities.filter((entity) => (includeDeleted || !entity.deletedAt) && (!kind || entity.kind === kind)) });
+    }
+    if (/^\/api\/core\/works\/[^/]+\/entities$/u.test(path) && method === 'POST' && state.work) {
+      const input = request.postDataJSON() as Pick<EntityState, 'kind' | 'title' | 'summary' | 'fields'>;
+      const entity: EntityState = { id: `entity-${state.entities.length + 1}`, workId: state.work.id, ...input, summary: input.summary || '', fields: input.fields || {}, createdBy: userId, updatedBy: userId, createdAt: new Date().toISOString(), updatedAt: new Date().toISOString() };
+      state.entities.push(entity); return json(route, { entity }, 201);
+    }
+    const entityMatch = path.match(/^\/api\/core\/works\/[^/]+\/entities\/([^/]+)$/u);
+    if (entityMatch) {
+      const entity = state.entities.find((item) => item.id === entityMatch[1]);
+      if (!entity) return json(route, { error: 'NOT_FOUND' }, 404);
+      if (method === 'GET') return json(route, { references: [] });
+      if (method === 'PATCH') { Object.assign(entity, request.postDataJSON(), { updatedAt: new Date().toISOString() }); return json(route, { entity }); }
+      if (method === 'DELETE') { entity.deletedAt = new Date().toISOString(); return json(route, { ok: true }); }
+    }
+    const restoreEntityMatch = path.match(/^\/api\/core\/works\/[^/]+\/entities\/([^/]+)\/restore$/u);
+    if (restoreEntityMatch && method === 'POST') { const entity = state.entities.find((item) => item.id === restoreEntityMatch[1]); if (entity) delete entity.deletedAt; return json(route, { ok: true }); }
     const chapterMatch = path.match(/^\/api\/core\/chapters\/([^/]+)$/u);
     if (chapterMatch && state.work) {
       const chapter = state.work.chapters.find((item) => item.id === chapterMatch[1]);
@@ -122,6 +143,9 @@ test('uses responsive drawers and never starts the ranking module implicitly', a
     await expect(contextPanel).toHaveCSS('position', 'fixed');
     await page.getByRole('button', { name: '章工具' }).click();
     await expect(page.getByRole('button', { name: '章工具' })).toHaveAttribute('aria-expanded', 'true');
+    await page.getByRole('button', { name: '大纲与设定' }).click();
+    await expect(page.getByRole('dialog', { name: '大纲与世界设定' })).toBeVisible();
+    await page.getByRole('button', { name: '关闭大纲与世界设定' }).click();
   }
   if (test.info().project.name === 'desktop') {
     await page.getByRole('button', { name: '写作工具箱' }).click();
@@ -136,6 +160,35 @@ test('uses responsive drawers and never starts the ranking module implicitly', a
     await expect(page.getByRole('button', { name: '目录' })).toHaveAttribute('aria-expanded', 'true');
     await page.getByRole('button', { name: '目录' }).click();
     await expect(page.getByRole('button', { name: '目录' })).toHaveAttribute('aria-expanded', 'false');
+    await page.getByRole('button', { name: '更多' }).click();
+    await page.getByRole('button', { name: '大纲与设定' }).click();
+    await expect(page.getByRole('dialog', { name: '大纲与世界设定' })).toBeVisible();
+    await expect(page.getByRole('dialog', { name: '大纲与世界设定' })).toHaveCSS('width', '390px');
+    await page.getByRole('button', { name: '关闭大纲与世界设定' }).click();
   }
   expect(state.rankingRequests).toBe(0);
+});
+
+test('creates worldbuilding records and highlights chapter mentions without persisting marks', async ({ page }) => {
+  test.skip(test.info().project.name !== 'desktop');
+  const state = await installCoreApi(page, 'worldbuilding-desktop');
+  await page.goto('/');
+  await page.getByLabel('作品名称').fill('世界设定验收');
+  await page.getByRole('button', { name: '创建并开始写作' }).click();
+  await page.getByRole('button', { name: '大纲与设定' }).click();
+  await expect(page.getByRole('dialog', { name: '大纲与世界设定' })).toBeVisible();
+  await page.getByRole('button', { name: '人物卡' }).click();
+  await page.getByLabel('名称').fill('沈青');
+  await page.getByLabel('摘要与重点').fill('谨慎的主角');
+  await page.getByLabel('别名（逗号或换行分隔）').fill('阿青');
+  await page.getByRole('button', { name: '创建设定' }).click();
+  await expect(page.getByText('设定已保存。')).toBeVisible();
+  await page.getByRole('button', { name: '关闭大纲与世界设定' }).click();
+  const editor = page.locator('.ProseMirror');
+  await editor.fill('阿青踏入长街，沈青没有回头。');
+  await expect.poll(() => state.work?.chapters[0]?.plainText, { timeout: 5_000 }).toContain('沈青');
+  await page.getByRole('tab', { name: '设定提示' }).click();
+  await expect(page.getByText(/命中 沈青、阿青|命中 阿青、沈青/u)).toBeVisible();
+  await expect(page.locator('.entity-mention-highlight')).toHaveCount(2);
+  expect(JSON.stringify(state.work?.chapters[0]?.canonicalContent)).not.toContain('entityMention');
 });
