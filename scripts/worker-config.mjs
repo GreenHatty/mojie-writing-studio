@@ -29,9 +29,9 @@ export function createWorkerConfig(environment = process.env) {
       binding: 'ASSETS',
       directory: 'client',
       not_found_handling: 'none',
-      // Authentication and private writing routes must never be short-circuited
-      // by the asset router. The application Worker decides whether a request is
-      // an API call, a protected navigation or a public immutable asset.
+      // The root document and private API must always reach the application
+      // Worker. The fetch entry explicitly delegates immutable client files to
+      // env.ASSETS before any application routing runs.
       run_worker_first: true
     },
     secrets: { required: [...REQUIRED_WORKER_SECRETS] },

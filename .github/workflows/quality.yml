@@ -36,6 +36,7 @@ jobs:
           node --check scripts/mojie-privacy-guard.mjs
           node --check scripts/cloudflare-fetch-entry.mjs
           node --check scripts/cloudflare-preview-acceptance.mjs
+          node --check scripts/verify-deployed-assets.mjs
           node --check scripts/test-privacy-guard.mjs
           node --check scripts/prepare-dist.mjs
           node --check public/sw.js
