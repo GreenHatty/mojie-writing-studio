@@ -17,6 +17,17 @@ describe('versioned ranking adapters', () => {
     expect(new QidianRankingAdapterV1().parse(html, 'text/html', new URL('https://www.qidian.com/rank/'))).toHaveLength(1);
   });
 
+  it('parses the current Qidian mobile ranking card structure with metadata', () => {
+    const html = '<a href="//m.qidian.com/book/1035420986/" class="_bookItem_hash"><div class="_ranking_hash _front_hash">1</div><h2 class="_title_hash">玄鉴仙族</h2><p class="_bookDesc_hash">一个家族拾到古镜，开启修仙新时代。</p><p class="_subTitle_hash">季越人 <em>·</em> 仙侠 <em>·</em> 600万字</p></a>';
+    const [item] = new QidianRankingAdapterV1().parse(html, 'text/html', new URL('https://m.qidian.com/rank/yuepiao/'));
+    expect(item).toEqual(expect.objectContaining({ rank: 1, title: '玄鉴仙族', author: '季越人', tags: ['仙侠'], bookId: '1035420986' }));
+  });
+
+  it('does not treat a harmless captcha SDK script as a challenge page', () => {
+    const html = '<script src="https://example.invalid/captcha/index.js"></script><script type="application/json">{"books":[{"bookId":"1","bookName":"正常作品","authorName":"作者"}]}</script>';
+    expect(new FanqieRankingAdapterV1().parse(html, 'text/html', new URL('https://fanqienovel.com/rank/0_1_749'))).toHaveLength(1);
+  });
+
   it('deduplicates works and accepts fewer than ten valid rows', () => {
     const payload = JSON.stringify({ books: [{ bookId: '1', bookName: '脱敏作品甲', authorName: '甲' }, { bookId: '1', bookName: '脱敏作品甲', authorName: '甲' }, { bookId: '2', bookName: '脱敏作品乙', authorName: '乙' }] });
     expect(new FanqieRankingAdapterV1().parse(payload, 'application/json', new URL('https://fanqienovel.com/rank'))).toHaveLength(2);

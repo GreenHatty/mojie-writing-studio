@@ -13,6 +13,7 @@ describe('production Worker configuration', () => {
     expect(config.vars).toEqual({ APP_ORIGIN: 'https://mojie.example', NODE_ENV: 'production' });
     expect(config.d1_databases).toEqual([expect.objectContaining({ binding: 'DB', database_id: 'database-id' })]);
     expect(config.secrets.required).toEqual(REQUIRED_WORKER_SECRETS);
+    expect(config.assets).toMatchObject({ run_worker_first: true, not_found_handling: 'none' });
     expect(config).not.toHaveProperty('r2_buckets');
   });
 

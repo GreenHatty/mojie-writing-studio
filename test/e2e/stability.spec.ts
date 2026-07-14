@@ -152,6 +152,9 @@ test('uses responsive drawers and never starts the ranking module implicitly', a
     await expect(page.getByRole('button', { name: '章工具' })).toHaveAttribute('aria-expanded', 'true');
     await page.getByRole('button', { name: '大纲与设定' }).click();
     await expect(page.getByRole('dialog', { name: '大纲与世界设定' })).toBeVisible();
+    const drawerBody = page.locator('.worldbuilding-drawer .authoring-drawer-body');
+    await drawerBody.evaluate((element) => element.scrollTo({ top: element.scrollHeight }));
+    await expect(page.locator('.worldbuilding-drawer .project-form-footer')).toBeInViewport();
     await page.getByRole('button', { name: '关闭大纲与世界设定' }).click();
   }
   if (test.info().project.name === 'desktop') {
@@ -178,6 +181,9 @@ test('uses responsive drawers and never starts the ranking module implicitly', a
     await page.getByRole('button', { name: '大纲与设定' }).click();
     await expect(page.getByRole('dialog', { name: '大纲与世界设定' })).toBeVisible();
     await expect(page.getByRole('dialog', { name: '大纲与世界设定' })).toHaveCSS('width', '390px');
+    const drawerBody = page.locator('.worldbuilding-drawer .authoring-drawer-body');
+    await drawerBody.evaluate((element) => element.scrollTo({ top: element.scrollHeight }));
+    await expect(page.locator('.worldbuilding-drawer .project-form-footer')).toBeInViewport();
     await page.getByRole('button', { name: '关闭大纲与世界设定' }).click();
   }
   expect(state.rankingRequests).toBe(test.info().project.name === 'desktop' ? 1 : 0);
@@ -248,7 +254,12 @@ test('keeps graph, DOCX, rankings and backup panels outside the writing long-tas
   });
   await page.getByRole('button', { name: '大纲与设定' }).click();
   await expect(page.getByRole('dialog', { name: '大纲与世界设定' })).toBeVisible();
-  await page.getByRole('button', { name: '关系图' }).click();
+  await page.getByRole('button', { name: '时间线、关系图与地图' }).click();
+  await expect(page.getByRole('button', { name: '甘特图' })).toBeVisible();
+  await page.getByRole('tab', { name: '人物关系' }).click();
+  await expect(page.getByText('网状', { exact: true })).toBeVisible();
+  await page.getByRole('tab', { name: '地图DIY' }).click();
+  await expect(page.getByRole('application', { name: '可绘制世界地图' })).toBeVisible();
   await page.getByRole('button', { name: '关闭大纲与世界设定' }).click();
   await page.getByRole('button', { name: '写作工具箱' }).click();
   await page.getByRole('button', { name: '文件与备份' }).click();

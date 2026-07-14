@@ -80,15 +80,15 @@ input, select, textarea { color: var(--ink); }
 .work-search-panel li span, .work-search-panel li small { overflow: hidden; color: var(--muted); font-size: 12px; text-overflow: ellipsis; white-space: nowrap; }
 .chapter-heading-actions { display: inline-flex; flex-wrap: wrap; justify-content: flex-end; gap: 7px; }
 .danger-button { color: #9f3b34; }
-.authoring-drawer-backdrop { position: fixed; z-index: 80; inset: 0; display: grid; justify-items: end; background: rgba(21, 28, 24, .34); backdrop-filter: blur(3px); }
-.authoring-drawer { display: grid; grid-template-rows: auto auto minmax(0, 1fr) auto; width: min(860px, 92vw); height: 100%; color: var(--ink); background: var(--paper); box-shadow: -18px 0 50px rgba(15, 24, 19, .22); }
+.authoring-drawer-backdrop { position: fixed; z-index: 80; inset: 0; display: grid; justify-items: end; overflow: hidden; background: rgba(21, 28, 24, .34); backdrop-filter: blur(3px); }
+.authoring-drawer { display: grid; grid-template-rows: auto auto minmax(0, 1fr) auto; width: min(860px, 92vw); height: 100vh; height: 100dvh; min-height: 0; color: var(--ink); background: var(--paper); box-shadow: -18px 0 50px rgba(15, 24, 19, .22); overscroll-behavior: contain; }
 .authoring-drawer > header, .authoring-drawer > footer { display: flex; align-items: center; justify-content: space-between; gap: 16px; padding: 16px 22px; border-bottom: 1px solid var(--line); }
 .authoring-drawer > header h1 { margin: 2px 0 0; font-size: 25px; }
 .authoring-drawer > header > button { width: 38px; height: 38px; border: 0; border-radius: 50%; color: inherit; background: var(--accent-soft); cursor: pointer; font-size: 24px; }
 .authoring-drawer > nav { display: flex; gap: 6px; overflow-x: auto; padding: 10px 18px; border-bottom: 1px solid var(--line); }
 .authoring-drawer > nav button { flex: 0 0 auto; padding: 8px 12px; border: 0; border-radius: 8px; color: var(--muted); background: transparent; cursor: pointer; }
 .authoring-drawer > nav button[aria-current="page"] { color: var(--accent); background: var(--accent-soft); font-weight: 700; }
-.authoring-drawer-body { min-height: 0; overflow: auto; padding: 20px 24px 36px; }
+.authoring-drawer-body { min-height: 0; overflow-x: hidden; overflow-y: auto; padding: 20px 24px max(36px, env(safe-area-inset-bottom)); scrollbar-gutter: stable; overscroll-behavior: contain; }
 .authoring-drawer > footer { border-top: 1px solid var(--line); border-bottom: 0; color: var(--muted); }
 .authoring-drawer > footer button, .planning-card-editor .panel-section-heading button { padding: 8px 13px; border: 0; border-radius: 8px; color: white; background: var(--accent); cursor: pointer; }
 .authoring-drawer-loading { position: fixed; z-index: 81; inset: 0 0 0 auto; display: grid; width: min(860px, 92vw); place-items: center; background: var(--paper); }
@@ -103,24 +103,28 @@ input, select, textarea { color: var(--ink); }
 .core-import-box { display: grid; gap: 14px; padding: 18px; border: 1px solid var(--line); border-radius: 14px; background: var(--panel); }
 .core-import-box > label { display: grid; gap: 7px; }
 .worldbuilding-drawer { width: min(1120px, 96vw); }
-.worldbuilding-drawer .authoring-drawer-body { overflow: hidden; }
-.worldbuilding-workspace { display: grid; grid-template-columns: minmax(230px, .72fr) minmax(0, 1.8fr); gap: 20px; height: 100%; min-height: 0; }
-.worldbuilding-workspace > aside { display: flex; min-width: 0; flex-direction: column; gap: 12px; padding-right: 18px; border-right: 1px solid var(--line); }
+.worldbuilding-drawer .authoring-drawer-body { overflow-x: hidden; overflow-y: auto; }
+.worldbuilding-workspace { display: grid; grid-template-columns: minmax(230px, .72fr) minmax(0, 1.8fr); align-items: start; gap: 20px; min-height: 0; }
+.worldbuilding-workspace > aside { position: sticky; top: 0; display: flex; min-width: 0; max-height: calc(100dvh - 260px); flex-direction: column; gap: 12px; padding-right: 18px; border-right: 1px solid var(--line); }
 .world-kind-tabs { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; }
 .world-kind-tabs button, .worldbuilding-workspace > aside > button { min-height: 34px; padding: 7px 9px; border: 1px solid var(--line); border-radius: 8px; color: var(--muted); background: transparent; text-align: left; }
 .world-kind-tabs button[aria-current="page"] { color: var(--accent); border-color: var(--accent); background: var(--accent-soft); font-weight: 700; }
 .include-deleted { color: var(--muted); font-size: 12px; }
-.worldbuilding-workspace > aside > ul { display: grid; gap: 7px; overflow: auto; margin: 0; padding: 0; list-style: none; }
+.worldbuilding-workspace > aside > ul { display: grid; gap: 7px; min-height: 0; overflow: auto; margin: 0; padding: 0 4px 12px 0; list-style: none; overscroll-behavior: contain; }
 .worldbuilding-workspace > aside > ul li { display: grid; grid-template-columns: minmax(0, 1fr) auto; overflow: hidden; border: 1px solid var(--line); border-radius: 9px; }
 .worldbuilding-workspace > aside > ul li.is-active { border-color: var(--accent); }
 .worldbuilding-workspace > aside > ul li button { min-width: 0; padding: 9px; border: 0; color: inherit; background: transparent; text-align: left; }
 .worldbuilding-workspace > aside > ul li button:last-child:not(:first-child) { color: #9f3b34; font-size: 11px; }
 .worldbuilding-workspace > aside strong, .worldbuilding-workspace > aside small { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .worldbuilding-workspace > aside small { margin-top: 4px; color: var(--muted); font-size: 10px; }
-.worldbuilding-workspace > main { display: grid; align-content: start; gap: 13px; min-width: 0; overflow: auto; padding-right: 6px; }
-.world-editor-heading { position: sticky; z-index: 2; top: 0; display: flex; align-items: center; justify-content: space-between; gap: 14px; padding-bottom: 8px; background: var(--paper); }
+.worldbuilding-workspace > main { display: grid; align-content: start; gap: 13px; min-width: 0; overflow: visible; padding-right: 6px; }
+.world-editor-heading { position: sticky; z-index: 2; top: -20px; display: flex; align-items: center; justify-content: space-between; gap: 14px; padding: 20px 0 10px; background: color-mix(in srgb, var(--paper) 96%, transparent); backdrop-filter: blur(10px); }
 .world-editor-heading .project-intro { margin: 0; }
 .world-editor-heading > button { flex: 0 0 auto; min-height: 36px; padding: 0 13px; border: 0; border-radius: 8px; color: white; background: var(--accent); font-weight: 700; }
+.entity-workflow { display: grid; gap: 9px; padding: 14px; border: 1px solid color-mix(in srgb, var(--accent) 42%, var(--line)); border-radius: 12px; background: var(--accent-soft); }
+.entity-workflow > strong { color: var(--accent); line-height: 1.55; }
+.entity-workflow ol, .entity-workflow ul { display: grid; gap: 5px; margin: 0; padding-left: 22px; color: var(--muted); font-size: 11px; line-height: 1.6; }
+.entity-workflow summary { cursor: pointer; color: var(--ink); font-size: 11px; font-weight: 700; }
 .worldbuilding-workspace > main > label, .entity-fields label { display: grid; gap: 6px; color: var(--muted); font-size: 12px; }
 .worldbuilding-workspace input, .worldbuilding-workspace select, .worldbuilding-workspace textarea { width: 100%; min-width: 0; padding: 9px 10px; border: 1px solid var(--line); border-radius: 8px; color: var(--ink); background: var(--panel); }
 .worldbuilding-workspace textarea { min-height: 90px; resize: vertical; line-height: 1.6; }
@@ -134,7 +138,7 @@ input, select, textarea { color: var(--ink); }
 .entity-delete-dialog button:last-child { color: white; border-color: #9f3b34; background: #9f3b34; }
 
 @media (max-width: 720px) {
-  .authoring-drawer { width: 100vw; }
+  .authoring-drawer { width: 100vw; max-width: 100vw; }
   .authoring-drawer-body { padding: 16px 14px 28px; }
   .authoring-drawer > header, .authoring-drawer > footer { padding: 12px 14px; }
   .dictionary-grid { grid-template-columns: 1fr; }
@@ -143,10 +147,18 @@ input, select, textarea { color: var(--ink); }
   .worldbuilding-drawer .authoring-drawer-body { overflow: auto; }
   .worldbuilding-workspace { height: auto; }
   .worldbuilding-workspace > main { overflow: visible; padding-right: 0; }
-  .worldbuilding-workspace > aside { padding-right: 0; border-right: 0; border-bottom: 1px solid var(--line); }
+  .worldbuilding-workspace > aside { position: static; max-height: none; padding-right: 0; border-right: 0; border-bottom: 1px solid var(--line); }
   .worldbuilding-workspace > aside > ul { max-height: 220px; }
   .entity-fields { grid-template-columns: 1fr; }
   .entity-fields label:has(textarea) { grid-column: auto; }
+}
+
+@media (max-height: 620px) {
+  .authoring-drawer > header { padding-top: 10px; padding-bottom: 10px; }
+  .authoring-drawer > header h1 { font-size: 21px; }
+  .authoring-drawer > nav { padding-top: 7px; padding-bottom: 7px; }
+  .authoring-drawer > footer { padding-top: 9px; padding-bottom: max(9px, env(safe-area-inset-bottom)); }
+  .worldbuilding-workspace > aside { max-height: calc(100dvh - 210px); }
 }
 .studio-topbar { grid-area: topbar; z-index: 5; display: flex; align-items: center; gap: 18px; padding: 0 20px; border-bottom: 1px solid var(--line); background: color-mix(in srgb, var(--panel) 92%, transparent); backdrop-filter: blur(14px); }
 .brand-lockup { display: inline-flex; align-items: center; gap: 9px; padding: 0; border: 0; color: var(--ink); background: transparent; font-family: inherit; font-weight: 800; font-size: 17px; }
@@ -273,6 +285,15 @@ input, select, textarea { color: var(--ink); }
 .lessons-panel article { margin-top: 16px; }
 .lessons-panel article h2 { margin: 0; font-size: 20px; }
 .lessons-panel article > p { line-height: 1.75; }
+.lessons-panel article > section { display: grid; gap: 9px; margin-top: 14px; padding: 14px; border: 1px solid var(--line); border-radius: 12px; background: color-mix(in srgb, var(--paper) 74%, transparent); }
+.lessons-panel article > section h3 { margin: 0; color: var(--accent); font-size: 14px; }
+.lessons-panel article > section ol, .lessons-panel article > section ul { display: grid; gap: 7px; margin: 0; padding-left: 22px; font-size: 12px; line-height: 1.7; }
+.lesson-outcome { padding: 12px 14px; border-left: 4px solid var(--accent); border-radius: 9px; background: var(--accent-soft); }
+.lesson-example > div { padding: 11px; border-radius: 9px; background: var(--panel); }
+.lesson-example > div:first-of-type { border-left: 3px solid #b34b40; }
+.lesson-example > div:nth-of-type(2) { border-left: 3px solid var(--accent); }
+.lesson-example p, .lesson-assignment p { margin: 5px 0 0; white-space: pre-wrap; line-height: 1.75; }
+.lesson-assignment { border-color: color-mix(in srgb, var(--accent) 55%, var(--line)) !important; }
 
 .export-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 9px; }
 .export-grid button { min-height: 84px; padding: 12px; border: 1px solid var(--line); border-radius: 10px; color: var(--ink); background: var(--paper); text-align: left; }
@@ -301,7 +322,7 @@ input, select, textarea { color: var(--ink); }
 .project-form-footer span { color: var(--muted); font: 11px "Microsoft YaHei", sans-serif; }
 .project-form-footer button { color: white; background: var(--accent); }
 
-.operations-drawer { position: fixed; z-index: 40; inset: 0 0 0 auto; width: min(760px, 96vw); overflow: auto; color: var(--ink); background: var(--paper); box-shadow: -18px 0 54px rgba(26,38,31,.18); }
+.operations-drawer { position: fixed; z-index: 40; inset: 0 0 0 auto; width: min(760px, 96vw); height: 100vh; height: 100dvh; overflow-x: hidden; overflow-y: auto; padding-bottom: env(safe-area-inset-bottom); color: var(--ink); background: var(--paper); box-shadow: -18px 0 54px rgba(26,38,31,.18); overscroll-behavior: contain; scrollbar-gutter: stable; }
 .operations-drawer > header { position: sticky; z-index: 2; top: 0; display: flex; align-items: flex-start; justify-content: space-between; gap: 24px; padding: 24px 28px 18px; border-bottom: 1px solid var(--line); background: color-mix(in srgb, var(--paper) 94%, transparent); backdrop-filter: blur(12px); }
 .operations-drawer > header h2 { margin: 2px 0 6px; font-size: 26px; }
 .operations-drawer > header p:last-child { margin: 0; color: var(--muted); font-size: 12px; }
@@ -335,6 +356,10 @@ input, select, textarea { color: var(--ink); }
 .publication-recording li span, .backup-target-list span, .backup-target-list small, .backup-object-list span { margin-top: 3px; color: var(--muted); font-size: 10px; }
 .ranking-import { margin-top: 12px; }
 .ranking-snapshot { display: grid; grid-template-columns: minmax(230px, .8fr) minmax(0, 1.2fr); gap: 18px; }
+.ranking-live-picker { display: grid; grid-template-columns: minmax(220px, 1fr) auto minmax(220px, 1fr); align-items: end; gap: 10px; margin: 16px 0; padding: 14px; border: 1px solid var(--line); border-radius: 12px; background: var(--panel); }
+.ranking-live-picker label { display: grid; gap: 5px; color: var(--muted); font-size: 11px; }
+.ranking-live-picker select { width: 100%; min-height: 38px; padding: 7px 9px; border: 1px solid var(--line); border-radius: 8px; color: var(--ink); background: var(--paper); }
+.ranking-live-picker > button { min-height: 38px; padding: 0 14px; border: 0; border-radius: 8px; color: white; background: var(--accent); font-weight: 700; }
 .ranking-snapshot ol { display: grid; gap: 6px; margin: 0; padding: 0; list-style: none; }
 .ranking-snapshot ol button { width: 100%; text-align: left; }
 .ranking-snapshot ol button[aria-current="true"] { border-color: var(--accent); background: var(--accent-soft); }
@@ -393,9 +418,18 @@ input, select, textarea { color: var(--ink); }
   .operations-drawer > header, .operations-drawer-body { padding-right: 18px; padding-left: 18px; }
   .operations-drawer > nav { padding-right: 18px; padding-left: 18px; overflow-x: auto; }
   .operations-section > header, .publication-recording li, .backup-target-list li, .backup-object-list li { align-items: stretch; flex-direction: column; }
-  .operations-section details form, .publication-copy-grid, .ranking-snapshot, .publication-recording { grid-template-columns: 1fr; }
+.operations-section details form, .publication-copy-grid, .ranking-snapshot, .publication-recording, .ranking-live-picker { grid-template-columns: 1fr; }
   .publication-recording h4, .publication-recording ul, .publication-recording > p { grid-column: auto; }
 }
 
 .pwa-update-notice { position: fixed; right: 1rem; bottom: 1rem; z-index: 1000; max-width: min(28rem, calc(100vw - 2rem)); padding: .8rem 1rem; border: 1px solid var(--line); border-radius: .75rem; background: var(--panel); box-shadow: var(--shadow); color: var(--ink); font-size: .88rem; }
+
+/* 所有全屏辅助面板都以动态视口为边界，防止移动浏览器地址栏导致底部操作不可达。 */
+.admin-panel { max-height: calc(100dvh - 32px); }
+.admin-content, .operations-drawer-body, .authoring-drawer-body { overflow-wrap: anywhere; }
+@media (max-width: 760px) {
+  .admin-panel { max-height: 100dvh; }
+  .operations-drawer > header { padding-top: max(16px, env(safe-area-inset-top)); }
+  .operations-drawer-body { padding-bottom: max(44px, env(safe-area-inset-bottom)); }
+}
 .pwa-update-notice button { margin-left: .6rem; }

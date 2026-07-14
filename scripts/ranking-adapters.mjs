@@ -67,8 +67,14 @@ function embeddedJson(html) {
 
 function parseQidianHtml(html, baseUrl) {
   const output = [];
-  const pattern = /<li\b[^>]*(?:class=["'][^"']*(?:rank|book)[^"']*["'])?[^>]*>[\s\S]*?<a\b[^>]*href=["']([^"']*\/book\/\d+[^"']*)["'][^>]*(?:title=["']([^"']+)["'])?[^>]*>([\s\S]*?)<\/a>[\s\S]*?<\/li>/giu;
-  for (const match of html.matchAll(pattern)) output.push(normalizeCandidate({ url: match[1], title: match[2] || match[3], rank: output.length + 1 }, baseUrl));
+  const mobilePattern = /<a\b[^>]*href=["']([^"']*\/book\/(\d+)\/[^"']*)["'][^>]*class=["'][^"']*_bookItem_[^"']*["'][^>]*>[\s\S]*?<div\b[^>]*class=["'][^"']*_ranking_[^"']*["'][^>]*>([^<]+)<\/div>[\s\S]*?<h2\b[^>]*>([\s\S]*?)<\/h2>[\s\S]*?<p\b[^>]*class=["'][^"']*_bookDesc_[^"']*["'][^>]*>([\s\S]*?)<\/p>[\s\S]*?<p\b[^>]*class=["'][^"']*_subTitle_[^"']*["'][^>]*>([\s\S]*?)<\/p>[\s\S]*?<\/a>/giu;
+  for (const match of html.matchAll(mobilePattern)) {
+    const subtitle = stripHtml(match[6]).split('·').map((part) => part.trim());
+    output.push(normalizeCandidate({ url: match[1], bookId: match[2], rank: match[3], title: match[4], blurb: match[5], author: subtitle[0], tags: subtitle[1] ? [subtitle[1]] : [] }, baseUrl));
+  }
+  if (output.length) return output.filter(Boolean);
+  const desktopPattern = /<li\b[^>]*(?:class=["'][^"']*(?:rank|book)[^"']*["'])?[^>]*>[\s\S]*?<a\b[^>]*href=["']([^"']*\/book\/\d+[^"']*)["'][^>]*(?:title=["']([^"']+)["'])?[^>]*>([\s\S]*?)<\/a>[\s\S]*?<\/li>/giu;
+  for (const match of html.matchAll(desktopPattern)) output.push(normalizeCandidate({ url: match[1], title: match[2] || match[3], rank: output.length + 1 }, baseUrl));
   return output.filter(Boolean);
 }
 
@@ -92,7 +98,8 @@ function dedupe(items) {
 }
 
 function parsePayload(text, contentType, platform, baseUrl) {
-  if (/验证码|安全验证|访问过于频繁|captcha|verify you are human/iu.test(text)) throw new Error('ranking_access_challenge');
+  const visibleText = text.replace(/<script[\s\S]*?<\/script>/giu, ' ');
+  if (/验证码|安全验证|访问过于频繁|verify you are human/iu.test(visibleText)) throw new Error('ranking_access_challenge');
   const candidates = [];
   if (contentType.includes('json') || /^[\s]*[\[{]/u.test(text)) {
     try { collectJsonBooks(JSON.parse(text), candidates, baseUrl); } catch { /* embedded and HTML fallbacks follow */ }
@@ -167,7 +174,37 @@ class PlatformRankingAdapterV1 {
 }
 
 export class QidianRankingAdapterV1 extends PlatformRankingAdapterV1 { constructor() { super('qidian'); } }
-export class FanqieRankingAdapterV1 extends PlatformRankingAdapterV1 { constructor() { super('fanqie'); } }
+export class FanqieRankingAdapterV1 extends PlatformRankingAdapterV1 {
+  constructor() { super('fanqie'); }
+  async fetchAndParse(source, fetchImpl) {
+    if (source.platform !== this.platform) throw new Error('ranking_adapter_platform_mismatch');
+    const sourceUrl = validateRankingUrl(source.source_url, source.platform);
+    const route = sourceUrl.pathname.match(/\/rank\/(\d+)_(\d+)_(\d+)/u);
+    const gender = route?.[1] ?? '0'; const rankMold = route?.[2] ?? '1'; const categoryId = route?.[3] ?? '749';
+    const apiUrl = new URL('/api/rank/category/list', sourceUrl);
+    apiUrl.search = new URLSearchParams({ app_id: '2503', rank_list_type: '3', offset: '0', limit: '10', category_id: categoryId, rank_version: '', gender, rankMold }).toString();
+    const response = await secureFetch({ ...source, source_url: apiUrl.toString() }, fetchImpl);
+    const items = this.parse(response.text, response.contentType, response.url);
+    const enriched = [];
+    for (let start = 0; start < items.length; start += 3) {
+      const batch = await Promise.all(items.slice(start, start + 3).map(async (item) => {
+        if (!item.bookId) return item;
+        try {
+          const detail = await secureFetch({ ...source, source_url: `https://fanqienovel.com/page/${item.bookId}` }, fetchImpl);
+          const title = stripHtml(detail.text.match(/<title>([\s\S]*?)(?:完整版|小说_|_番茄)/iu)?.[1] || item.title);
+          const description = stripHtml(detail.text.match(/<meta\s+name=["']description["']\s+content=["']([^"']*)["']/iu)?.[1] || item.blurb).replace(/^番茄小说提供.*?精彩小说尽在番茄小说网。\s*/u, '');
+          const keywords = stripHtml(detail.text.match(/<meta\s+name=["']keywords["']\s+content=["']([^"']*)["']/iu)?.[1] || '');
+          const author = keywords.match(/,([^,，]{2,30})小说/u)?.[1] || item.author;
+          const tagLexicon = ['玄幻','都市','言情','古言','现言','宫斗','宅斗','穿越','重生','系统','种田','末世','悬疑','推理','甜宠','豪门','职场','年代','修仙','高武','无限流','同人','脑洞','校园','双学霸','男暗恋','团宠','先婚后爱','娱乐圈','双洁','追妻火葬场'];
+          const tags = tagLexicon.filter((tag) => `${title} ${description}`.includes(tag)).slice(0, 8);
+          return { ...item, title, author, blurb: description, tags, url: `https://fanqienovel.com/page/${item.bookId}` };
+        } catch { return item; }
+      }));
+      enriched.push(...batch);
+    }
+    return { items: dedupe(enriched), raw: response.text };
+  }
+}
 
 export function rankingAdapterFor(platform) {
   if (platform === 'qidian') return new QidianRankingAdapterV1();

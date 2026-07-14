@@ -82,10 +82,16 @@ export function TemplateLibrary({ onUseTemplate }: { onUseTemplate?: (template: 
               {expanded ? (
                 <div className="template-detail">
                   <dl>
+                    <div><dt>题材承诺</dt><dd>{template.definition}</dd></div>
                     <div><dt>一句话公式</dt><dd>{template.storyFormula}</dd></div>
+                    <div><dt>故事发动机</dt><dd>{template.specialMechanism}</dd></div>
+                    <div><dt>限制与代价</dt><dd>{template.mechanismLimits}</dd></div>
+                    <div><dt>最低必要世界观</dt><dd>{template.minimumWorldbuilding.join('；')}</dd></div>
                     <div><dt>第一章</dt><dd>{template.firstChapter.join('；')}</dd></div>
                     <div><dt>前三章</dt><dd>{template.firstThreeChapters.join('；')}</dd></div>
+                    <div><dt>前十章</dt><dd>{template.firstTenChapters.join('；')}</dd></div>
                     <div><dt>第一卷</dt><dd>{template.firstVolume.join('；')}</dd></div>
+                    <div><dt>本题材情绪兑现</dt><dd>{template.emotionalPayoffs.join('；')}</dd></div>
                     <div><dt>常见问题</dt><dd>{template.commonMistakes.join('；')}</dd></div>
                     <div><dt>微创新</dt><dd>{template.innovationDirections.join('；')}</dd></div>
                   </dl>
