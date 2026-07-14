@@ -395,7 +395,7 @@ export async function handleMojieExtendedApi(request, env) {
     return await collaborationRoutes(request, env, url.pathname, url);
   } catch (error) {
     if (error instanceof HttpError) return responseError(error.message, error.status, error.code, error.details);
-    console.error('Mojie extended API error', error);
+    console.error(JSON.stringify({ event: 'legacy_extended_api_error', code: 'internal_error' }));
     return responseError('服务器内部错误。', 500, 'internal_error');
   }
 }

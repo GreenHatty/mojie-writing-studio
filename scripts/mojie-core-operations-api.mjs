@@ -440,7 +440,7 @@ export async function handleMojieCoreOperationsApi(request, env, ctx) {
     return errorJson('NOT_FOUND', 404);
   } catch (error) {
     if (error instanceof OperationError) return errorJson(error.code, error.status, error.details);
-    console.error(JSON.stringify({ event: 'core_operations_error', code: error instanceof Error ? error.message.slice(0, 120) : 'UNKNOWN' }));
+    console.error(JSON.stringify({ event: 'core_operations_error', code: 'INTERNAL_ERROR' }));
     return errorJson('INTERNAL_ERROR', 500);
   }
 }

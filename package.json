@@ -11,6 +11,7 @@
     "test:e2e": "playwright test",
     "test:d1-local": "node scripts/verify-local-d1.mjs",
     "test:core-worker-local": "npm run build && node scripts/verify-core-local-worker.mjs",
+    "test:security-final": "node scripts/final-security-audit.mjs",
     "test:worker-entry": "node scripts/verify-worker-entry.mjs",
     "test:watch": "vitest",
     "typecheck": "tsc --noEmit"

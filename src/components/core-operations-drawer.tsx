@@ -40,8 +40,9 @@ function downloadBlob(blob: Blob, name: string) {
 
 export function CoreOperationsDrawer({ user, csrf, directory, chapter, text, onClose }: { user: CoreUser; csrf: string; directory: CoreWorkDirectory; chapter: CoreChapter; text: string; onClose(): void }) {
   const [tab, setTab] = useState<Tab>('publication');
+  useEffect(() => { const closeOnEscape = (event: KeyboardEvent) => { if (event.key === 'Escape') onClose(); }; document.addEventListener('keydown', closeOnEscape); return () => document.removeEventListener('keydown', closeOnEscape); }, [onClose]);
   return <section aria-label="平台运营与外部备份" aria-modal="true" className="operations-drawer" role="dialog">
-    <header><div><p className="eyebrow">按需加载的辅助模块</p><h2>平台运营与备份</h2><p>这些功能与正文输入、切章和本地保存完全隔离；关闭面板不会中断写作。</p></div><button onClick={onClose} type="button">关闭</button></header>
+    <header><div><p className="eyebrow">按需加载的辅助模块</p><h2>平台运营与备份</h2><p>这些功能与正文输入、切章和本地保存完全隔离；关闭面板不会中断写作。</p></div><button aria-label="关闭平台运营与外部备份" autoFocus onClick={onClose} type="button">关闭</button></header>
     <nav aria-label="运营功能"><button aria-current={tab === 'publication'} onClick={() => setTab('publication')} type="button">发布准备</button><button aria-current={tab === 'rankings'} onClick={() => setTab('rankings')} type="button">平台榜单</button><button aria-current={tab === 'backups'} onClick={() => setTab('backups')} type="button">外部备份</button></nav>
     <div className="operations-drawer-body">
       {tab === 'publication' ? <PublicationWorkspace chapter={chapter} csrf={csrf} directory={directory} text={text} /> : null}

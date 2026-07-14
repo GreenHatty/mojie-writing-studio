@@ -165,7 +165,7 @@ test('uses responsive drawers and never starts the ranking module implicitly', a
     await page.getByRole('button', { name: '平台榜单' }).click();
     await expect(page.getByRole('button', { name: /脱敏榜单作品/u })).toBeVisible();
     expect(state.rankingRequests).toBe(1);
-    await page.getByRole('button', { name: '关闭' }).click();
+    await page.getByRole('button', { name: '关闭平台运营与外部备份' }).click();
   }
   if (test.info().project.name === 'mobile-390') {
     const directory = page.getByRole('complementary', { name: '作品目录' });
@@ -205,4 +205,61 @@ test('creates worldbuilding records and highlights chapter mentions without pers
   await expect(page.getByText(/命中 沈青、阿青|命中 阿青、沈青/u)).toBeVisible();
   await expect(page.locator('.entity-mention-highlight')).toHaveCount(2);
   expect(JSON.stringify(state.work?.chapters[0]?.canonicalContent)).not.toContain('entityMention');
+});
+
+test('keeps the core writing flow keyboard-named, responsive and dismissible', async ({ page }) => {
+  await installCoreApi(page, `accessibility-${test.info().project.name}`);
+  await page.goto('/');
+  await page.getByLabel('作品名称').fill('可访问性验收');
+  await page.getByRole('button', { name: '创建并开始写作' }).click();
+  await expect(page.getByLabel('正文内容')).toBeVisible({ timeout: 15_000 });
+  const unnamed = await page.locator('button, a[href], input, select, textarea, [contenteditable="true"]').evaluateAll((elements) => elements.filter((element) => {
+    const html = element as HTMLElement;
+    const style = getComputedStyle(html);
+    if (style.display === 'none' || style.visibility === 'hidden' || html.closest('[aria-hidden="true"]')) return false;
+    const control = element as HTMLInputElement;
+    const labels = 'labels' in control && control.labels ? Array.from(control.labels).map((label) => label.textContent || '').join(' ') : '';
+    const labelledBy = html.getAttribute('aria-labelledby')?.split(/\s+/u).map((id) => document.getElementById(id)?.textContent || '').join(' ') || '';
+    return ![html.getAttribute('aria-label'), labelledBy, labels, html.textContent, html.getAttribute('title'), control.placeholder].some((value) => value?.trim());
+  }).map((element) => `${element.tagName.toLowerCase()}.${(element as HTMLElement).className}`));
+  expect(unnamed).toEqual([]);
+  expect(await page.locator('html').evaluate((element) => element.scrollWidth <= element.clientWidth)).toBe(true);
+  if (test.info().project.name === 'mobile-390') { await page.getByRole('button', { name: '更多' }).click(); await page.getByRole('button', { name: '发布、榜单与备份' }).click(); }
+  else await page.getByRole('button', { name: '发布与备份' }).click();
+  const dialog = page.getByRole('dialog', { name: '平台运营与外部备份' });
+  await expect(dialog).toBeVisible();
+  await expect(page.getByRole('button', { name: '关闭平台运营与外部备份' })).toBeFocused();
+  await page.keyboard.press('Escape');
+  await expect(dialog).toBeHidden();
+});
+
+test('keeps graph, DOCX, rankings and backup panels outside the writing long-task budget', async ({ page }) => {
+  test.skip(test.info().project.name !== 'desktop');
+  await installCoreApi(page, 'auxiliary-performance-desktop');
+  await page.goto('/');
+  await page.getByLabel('作品名称').fill('辅助模块性能验收');
+  await page.getByRole('button', { name: '创建并开始写作' }).click();
+  await expect(page.getByLabel('正文内容')).toBeVisible({ timeout: 15_000 });
+  await page.evaluate(() => {
+    (window as typeof window & { __mojieAuxLongTasks?: number[] }).__mojieAuxLongTasks = [];
+    if ('PerformanceObserver' in window) new PerformanceObserver((list) => {
+      (window as typeof window & { __mojieAuxLongTasks?: number[] }).__mojieAuxLongTasks?.push(...list.getEntries().map((entry) => entry.duration));
+    }).observe({ type: 'longtask', buffered: false });
+  });
+  await page.getByRole('button', { name: '大纲与设定' }).click();
+  await expect(page.getByRole('dialog', { name: '大纲与世界设定' })).toBeVisible();
+  await page.getByRole('button', { name: '关系图' }).click();
+  await page.getByRole('button', { name: '关闭大纲与世界设定' }).click();
+  await page.getByRole('button', { name: '写作工具箱' }).click();
+  await page.getByRole('button', { name: '文件与备份' }).click();
+  await page.getByRole('button', { name: '关闭写作工具箱' }).click();
+  await page.getByRole('button', { name: '发布与备份' }).click();
+  await page.getByRole('button', { name: '平台榜单' }).click();
+  await expect(page.getByRole('button', { name: /脱敏榜单作品/u })).toBeVisible();
+  await page.getByRole('button', { name: '外部备份', exact: true }).click();
+  await expect(page.getByText(/R2 未启用/u)).toBeVisible();
+  await page.getByRole('button', { name: '关闭平台运营与外部备份' }).click();
+  const longestTask = await page.evaluate(() => Math.max(0, ...((window as typeof window & { __mojieAuxLongTasks?: number[] }).__mojieAuxLongTasks || [])));
+  expect(longestTask).toBeLessThan(100);
+  await expect(page.getByLabel('正文内容')).toBeVisible();
 });
