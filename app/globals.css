@@ -183,7 +183,7 @@ input, select, textarea { color: var(--ink); }
   .authoring-drawer > footer { padding-top: 9px; padding-bottom: max(9px, env(safe-area-inset-bottom)); }
   .worldbuilding-workspace > aside { max-height: calc(100dvh - 210px); }
 }
-.studio-topbar { grid-area: topbar; z-index: 5; display: flex; align-items: center; gap: 18px; padding: 0 20px; border-bottom: 1px solid var(--line); background: color-mix(in srgb, var(--panel) 92%, transparent); backdrop-filter: blur(14px); }
+.studio-topbar { grid-area: topbar; z-index: 20; display: flex; align-items: center; gap: 18px; padding: 0 20px; border-bottom: 1px solid var(--line); background: color-mix(in srgb, var(--panel) 92%, transparent); backdrop-filter: blur(14px); }
 .brand-lockup { display: inline-flex; align-items: center; gap: 9px; padding: 0; border: 0; color: var(--ink); background: transparent; font-family: inherit; font-weight: 800; font-size: 17px; }
 .work-identity { display: grid; gap: 2px; min-width: 0; border-left: 1px solid var(--line); padding-left: 18px; }
 .work-identity span { color: var(--muted); font: 12px/1.2 "Microsoft YaHei", sans-serif; }
@@ -459,6 +459,7 @@ input, select, textarea { color: var(--ink); }
   .studio-sidebar.is-mobile-open { transform: translateX(0); background: var(--paper); }
   .context-sidebar { top: 56px; }
   .editor-stage { padding: 24px 18px 0; }
+  .editor-toolbar { position: static; }
   .chapter-heading { gap: 8px; margin-bottom: 14px; }
   .chapter-heading input { font-size: 22px; }
   .prose-editor { min-height: calc(100vh - 210px); }
