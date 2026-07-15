@@ -1,5 +1,6 @@
 import { backupAdapterFor, validateBackupUrl } from './backup-adapters.mjs';
 import { rankingAdapterFor, validateRankingUrl } from './ranking-adapters.mjs';
+import { CORE_PREMISE_SYSTEM_PROMPT } from './core-premise-prompt.mjs';
 
 const terminalRankingStatuses = new Set(['completed', 'partial', 'failed', 'cancelled']);
 const terminalBackupStatuses = new Set(['completed', 'partial', 'failed', 'cancelled']);
@@ -315,6 +316,131 @@ async function decryptConfig(env, row) {
   } catch (error) { if (error instanceof OperationError) throw error; throw new OperationError('BACKUP_CONFIG_DECRYPTION_FAILED', 503); }
 }
 
+function allowedAiHosts(env) {
+  return new Set([
+    'api.deepseek.com',
+    'api.openai.com',
+    'api.siliconflow.cn',
+    'dashscope.aliyuncs.com',
+    ...String(env.MOJIE_AI_ALLOWED_HOSTS || '').split(',').map((host) => host.trim().toLowerCase()).filter(Boolean)
+  ]);
+}
+
+function validateAiBaseUrl(env, input) {
+  let url;
+  try { url = new URL(String(input || '').trim()); } catch { throw new OperationError('INVALID_AI_BASE_URL', 400); }
+  if (url.protocol !== 'https:' || url.username || url.password || url.search || url.hash || !allowedAiHosts(env).has(url.hostname.toLowerCase())) throw new OperationError('AI_HOST_NOT_ALLOWED', 400);
+  return url.toString().replace(/\/$/u, '');
+}
+
+async function aiConfigKey(env, ownerId) {
+  const secret = env.MOJIE_AI_CONFIG_MASTER_KEY || env.MOJIE_BACKUP_MASTER_KEY || env.BACKUP_MASTER_KEY;
+  if (!secret) throw new OperationError('AI_CONFIG_KEY_NOT_CONFIGURED', 503);
+  const material = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(`${secret}:ai-provider:${ownerId}:v1`));
+  return crypto.subtle.importKey('raw', material, 'AES-GCM', false, ['encrypt', 'decrypt']);
+}
+
+async function encryptAiApiKey(env, ownerId, apiKey) {
+  const iv = crypto.getRandomValues(new Uint8Array(12));
+  const ciphertext = new Uint8Array(await crypto.subtle.encrypt({ name: 'AES-GCM', iv }, await aiConfigKey(env, ownerId), new TextEncoder().encode(apiKey)));
+  return { ciphertext, iv };
+}
+
+async function decryptAiApiKey(env, ownerId, row) {
+  try {
+    const clear = await crypto.subtle.decrypt({ name: 'AES-GCM', iv: new Uint8Array(row.api_key_iv) }, await aiConfigKey(env, ownerId), new Uint8Array(row.api_key_ciphertext));
+    return new TextDecoder().decode(clear);
+  } catch (error) { if (error instanceof OperationError) throw error; throw new OperationError('AI_CONFIG_DECRYPTION_FAILED', 503); }
+}
+
+async function readLimitedResponse(response, maximumBytes = 512_000) {
+  const declared = Number(response.headers.get('content-length') || 0);
+  if (declared > maximumBytes) throw new OperationError('AI_RESPONSE_TOO_LARGE', 502);
+  if (!response.body) return '';
+  const reader = response.body.getReader(); const chunks = []; let total = 0;
+  try {
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      total += value.byteLength;
+      if (total > maximumBytes) { await reader.cancel(); throw new OperationError('AI_RESPONSE_TOO_LARGE', 502); }
+      chunks.push(value);
+    }
+  } finally { reader.releaseLock(); }
+  const bytes = new Uint8Array(total); let offset = 0;
+  for (const chunk of chunks) { bytes.set(chunk, offset); offset += chunk.byteLength; }
+  return new TextDecoder().decode(bytes);
+}
+
+function aiChatUrl(baseUrl) {
+  return `${baseUrl.replace(/\/$/u, '')}/chat/completions`;
+}
+
+async function aiRoutes(request, env, pathname) {
+  if (pathname === '/api/core/ai/provider' && request.method === 'GET') {
+    const session = await sessionFor(request, env);
+    const row = await env.DB.prepare('SELECT provider,label,base_url,model,key_version,created_at,updated_at FROM ai_provider_configs WHERE owner_id=? LIMIT 1').bind(session.userId).first();
+    return responseJson({ configured: Boolean(row), config: row ? { provider: row.provider, label: row.label, baseUrl: row.base_url, model: row.model, keyVersion: row.key_version, createdAt: row.created_at, updatedAt: row.updated_at } : null, keyStorageReady: Boolean(env.MOJIE_AI_CONFIG_MASTER_KEY || env.MOJIE_BACKUP_MASTER_KEY || env.BACKUP_MASTER_KEY) });
+  }
+  if (pathname === '/api/core/ai/provider' && request.method === 'PUT') {
+    const session = await requireMutation(request, env); const body = await readJson(request, 32_000);
+    const provider = String(body.provider || 'deepseek');
+    if (!['deepseek', 'openai-compatible'].includes(provider)) throw new OperationError('INVALID_AI_PROVIDER', 400);
+    const baseUrl = validateAiBaseUrl(env, body.baseUrl || (provider === 'deepseek' ? 'https://api.deepseek.com' : ''));
+    const model = String(body.model || '').trim().slice(0, 160);
+    if (!model) throw new OperationError('AI_MODEL_REQUIRED', 400);
+    const existing = await env.DB.prepare('SELECT api_key_ciphertext,api_key_iv FROM ai_provider_configs WHERE owner_id=? LIMIT 1').bind(session.userId).first();
+    const apiKey = String(body.apiKey || '').trim();
+    if (!apiKey && !existing) throw new OperationError('AI_API_KEY_REQUIRED', 400);
+    if (apiKey.length > 1_000) throw new OperationError('AI_API_KEY_INVALID', 400);
+    const encrypted = apiKey ? await encryptAiApiKey(env, session.userId, apiKey) : { ciphertext: new Uint8Array(existing.api_key_ciphertext), iv: new Uint8Array(existing.api_key_iv) };
+    const timestamp = nowIso();
+    await env.DB.prepare(`INSERT INTO ai_provider_configs(owner_id,provider,label,base_url,model,api_key_ciphertext,api_key_iv,key_version,created_at,updated_at)
+      VALUES(?,?,?,?,?,?,?,1,?,?) ON CONFLICT(owner_id) DO UPDATE SET provider=excluded.provider,label=excluded.label,base_url=excluded.base_url,model=excluded.model,api_key_ciphertext=excluded.api_key_ciphertext,api_key_iv=excluded.api_key_iv,key_version=excluded.key_version,updated_at=excluded.updated_at`)
+      .bind(session.userId, provider, String(body.label || '核心设定模型').trim().slice(0, 100), baseUrl, model, encrypted.ciphertext.buffer, encrypted.iv.buffer, timestamp, timestamp).run();
+    await audit(env, session.userId, 'ai.provider.configure', 'ai_provider_config', session.userId, { provider, model, host: new URL(baseUrl).hostname });
+    return responseJson({ configured: true });
+  }
+  if (pathname === '/api/core/ai/provider' && request.method === 'DELETE') {
+    const session = await requireMutation(request, env);
+    await env.DB.prepare('DELETE FROM ai_provider_configs WHERE owner_id=?').bind(session.userId).run();
+    await audit(env, session.userId, 'ai.provider.delete', 'ai_provider_config', session.userId);
+    return responseJson({ ok: true });
+  }
+  if (pathname === '/api/core/ai/optimize' && request.method === 'POST') {
+    const session = await requireMutation(request, env); const body = await readJson(request, 96_000);
+    const workId = String(body.workId || ''); await requireWorkAccess(env, session.userId, workId, true);
+    const input = String(body.input || '').trim();
+    if (input.length < 20) throw new OperationError('AI_INPUT_TOO_SHORT', 400);
+    if (input.length > 60_000) throw new OperationError('AI_INPUT_TOO_LONG', 413);
+    const config = await env.DB.prepare('SELECT * FROM ai_provider_configs WHERE owner_id=? LIMIT 1').bind(session.userId).first();
+    if (!config) throw new OperationError('AI_PROVIDER_NOT_CONFIGURED', 409);
+    const runId = makeId('ai-run'); const timestamp = nowIso();
+    const controller = new AbortController(); const timer = setTimeout(() => controller.abort('timeout'), 45_000);
+    try {
+      const response = await fetch(aiChatUrl(validateAiBaseUrl(env, config.base_url)), {
+        method: 'POST', redirect: 'error', signal: controller.signal,
+        headers: { authorization: `Bearer ${await decryptAiApiKey(env, session.userId, config)}`, 'content-type': 'application/json', accept: 'application/json' },
+        body: JSON.stringify({ model: config.model, messages: [{ role: 'system', content: CORE_PREMISE_SYSTEM_PROMPT }, { role: 'user', content: input }], stream: false, max_tokens: 4_000 })
+      });
+      const raw = await readLimitedResponse(response);
+      if (!response.ok) throw new OperationError(`AI_PROVIDER_HTTP_${response.status}`, response.status === 429 ? 429 : 502);
+      let value; try { value = JSON.parse(raw); } catch { throw new OperationError('AI_PROVIDER_INVALID_JSON', 502); }
+      const output = String(value?.choices?.[0]?.message?.content || '').trim();
+      if (!output) throw new OperationError('AI_PROVIDER_EMPTY_RESULT', 502);
+      await env.DB.prepare('INSERT INTO ai_optimizer_runs(id,owner_id,work_id,provider,model,input_hash,status,error_code,created_at,finished_at) VALUES(?,?,?,?,?,?,\'completed\',NULL,?,?)').bind(runId, session.userId, workId, config.provider, config.model, await sha256(input, 'hex'), timestamp, nowIso()).run();
+      await audit(env, session.userId, 'ai.premise.optimize', 'work', workId, { provider: config.provider, model: config.model, runId });
+      return responseJson({ runId, output, model: config.model });
+    } catch (error) {
+      const code = controller.signal.aborted ? 'AI_PROVIDER_TIMEOUT' : error instanceof OperationError ? error.code : 'AI_PROVIDER_FAILED';
+      await env.DB.prepare('INSERT INTO ai_optimizer_runs(id,owner_id,work_id,provider,model,input_hash,status,error_code,created_at,finished_at) VALUES(?,?,?,?,?,?,\'failed\',?,?,?)').bind(runId, session.userId, workId, config.provider, config.model, await sha256(input, 'hex'), code, timestamp, nowIso()).run().catch(() => {});
+      if (controller.signal.aborted) throw new OperationError('AI_PROVIDER_TIMEOUT', 504);
+      throw error;
+    } finally { clearTimeout(timer); }
+  }
+  return null;
+}
+
 function validateBackupConfig(targetType, config) {
   if (!['webdav', 's3-compatible'].includes(targetType)) throw new OperationError('INVALID_BACKUP_TARGET', 400);
   try { validateBackupUrl(targetType === 'webdav' ? config.baseUrl : config.endpoint); } catch { throw new OperationError('INVALID_BACKUP_HOST', 400); }
@@ -431,9 +557,9 @@ async function backupRoutes(request, env, pathname, ctx) {
 
 export async function handleMojieCoreOperationsApi(request, env, ctx) {
   const pathname = new URL(request.url).pathname;
-  if (!pathname.startsWith('/api/core/rankings/') && pathname !== '/api/core/publications' && !pathname.startsWith('/api/core/backups/')) return null;
+  if (!pathname.startsWith('/api/core/rankings/') && pathname !== '/api/core/publications' && !pathname.startsWith('/api/core/backups/') && !pathname.startsWith('/api/core/ai/')) return null;
   try {
-    for (const handler of [rankingRoutes, publicationRoutes, backupRoutes]) {
+    for (const handler of [rankingRoutes, publicationRoutes, backupRoutes, aiRoutes]) {
       const response = await handler(request, env, pathname, ctx);
       if (response) return response;
     }

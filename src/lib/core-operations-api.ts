@@ -8,6 +8,7 @@ export type CorePublicationRecord = { id: string; work_id: string; chapter_id: s
 export type CoreBackupTarget = { id: string; work_id: string; label: string; target_type: 'webdav' | 's3-compatible'; enabled: number; interval_minutes: number; retention_hours: number; last_backup_at: string | null; next_backup_at: string | null; last_error_code: string | null };
 export type CoreBackupRun = { id: string; target_id: string; status: 'queued' | 'running' | 'completed' | 'partial' | 'failed' | 'cancelled'; attempt_count: number; error_code: string | null; created_at: string; finished_at: string | null };
 export type CoreBackupObject = { id: string; target_id: string; run_id: string; work_id: string; object_key: string; content_hash: string; size_bytes: number; created_at: string; expires_at: string; delete_error_code: string | null };
+export type CoreAiProviderConfig = { provider: 'deepseek' | 'openai-compatible'; label: string; baseUrl: string; model: string; keyVersion: number; createdAt: string; updatedAt: string };
 
 function mutationHeaders(csrf: string) { return { Origin: window.location.origin, 'X-CSRF-Token': csrf }; }
 
@@ -60,4 +61,20 @@ export async function downloadCoreBackupObject(objectId: string, signal?: AbortS
     if (!response.ok) throw new Error(`BACKUP_DOWNLOAD_${response.status}`);
     return response.blob();
   } finally { window.clearTimeout(timer); signal?.removeEventListener('abort', abort); }
+}
+
+export async function getCoreAiProvider(signal?: AbortSignal): Promise<{ configured: boolean; config: CoreAiProviderConfig | null; keyStorageReady: boolean }> {
+  return apiRequest('/api/core/ai/provider', { signal });
+}
+
+export async function saveCoreAiProvider(input: { provider: 'deepseek' | 'openai-compatible'; label: string; baseUrl: string; model: string; apiKey?: string }, csrf: string, signal?: AbortSignal): Promise<void> {
+  await apiRequest('/api/core/ai/provider', { method: 'PUT', headers: mutationHeaders(csrf), body: jsonBody(input), timeoutMs: 15_000, signal });
+}
+
+export async function deleteCoreAiProvider(csrf: string, signal?: AbortSignal): Promise<void> {
+  await apiRequest('/api/core/ai/provider', { method: 'DELETE', headers: mutationHeaders(csrf), signal });
+}
+
+export async function optimizeCorePremise(input: { workId: string; input: string }, csrf: string, signal?: AbortSignal): Promise<{ runId: string; output: string; model: string }> {
+  return apiRequest('/api/core/ai/optimize', { method: 'POST', headers: mutationHeaders(csrf), body: jsonBody(input), timeoutMs: 50_000, signal });
 }

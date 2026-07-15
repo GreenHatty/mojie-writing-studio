@@ -90,6 +90,7 @@ async function installCoreApi(page: Page, userId: string) {
     }
     if (/\/note$/u.test(path) && method === 'GET') return json(route, { note: null });
     if (/\/versions$/u.test(path) && method === 'GET') return json(route, { versions: [] });
+    if (/\/versions$/u.test(path) && method === 'POST') return json(route, { version: { id: 'version-1', chapterId: 'chapter-1', label: (request.postDataJSON() as { label?: string }).label ?? null, reason: 'MANUAL', sourceRevision: state.work?.chapters[0]?.revision ?? 0, wordCount: state.work?.chapters[0]?.wordCount ?? 0, createdAt: new Date().toISOString() } }, 201);
     return json(route, { error: `UNHANDLED_${method}_${path}` }, 500);
   });
   return state;
@@ -121,6 +122,66 @@ test('creates, opens, edits and reconnects without an infinite loading state', a
   await page.getByRole('button', { name: '返回工作台' }).click();
   await expect(page.getByRole('heading', { name: '我的作品' })).toBeVisible({ timeout: 15_000 });
   await expect(page.locator('html')).toHaveJSProperty('scrollWidth', await page.locator('html').evaluate((element) => element.clientWidth));
+});
+
+test('formats web-fiction paragraphs and switches between document and mobile reading widths', async ({ page }) => {
+  test.skip(test.info().project.name !== 'desktop');
+  await installCoreApi(page, 'formatting-width-desktop');
+  await page.goto('/');
+  await page.getByLabel('作品名称').fill('排版与宽幅验收');
+  await page.getByRole('button', { name: '创建并开始写作' }).click();
+  const widthSelect = page.getByLabel('正文宽幅');
+  await widthSelect.selectOption('mobile');
+  await expect(page.locator('.rich-editor-shell')).toHaveCSS('max-width', '430px');
+  await widthSelect.selectOption('document');
+  await expect(page.locator('.rich-editor-shell')).toHaveCSS('max-width', '780px');
+
+  const source = '第一盏灯熄灭了。第二盏灯也开始闪烁。走廊尽头传来脚步声。她把钥匙攥进手心。门外的人没有敲门。他只是慢慢念出了她的名字。';
+  const editor = page.locator('.ProseMirror');
+  await editor.fill(source);
+  await page.getByRole('button', { name: '手机分段' }).click();
+  await expect(editor.locator('p')).toHaveCount(3);
+  await expect(editor).toContainText('他只是慢慢念出了她的名字。');
+  await expect(page.getByText(/只在原句边界分段/u)).toBeVisible();
+});
+
+test('adjusts map placement and clears then restores a map stroke', async ({ page }) => {
+  test.skip(test.info().project.name !== 'desktop');
+  await installCoreApi(page, 'map-clear-desktop');
+  await page.goto('/');
+  await page.getByLabel('作品名称').fill('地图撤回验收');
+  await page.getByRole('button', { name: '创建并开始写作' }).click();
+  await page.getByRole('button', { name: '大纲与设定' }).click();
+  await page.getByRole('button', { name: '时间线、关系图与地图' }).click();
+  await page.getByRole('tab', { name: '地图DIY' }).click();
+  await page.getByRole('button', { name: /横向拓界/u }).click();
+  await expect(page.getByText('工作区宽度 130%')).toBeVisible();
+  await page.getByRole('button', { name: '应用画布' }).click();
+  await expect(page.getByText('地图幅面与扩展边界已保存。')).toBeVisible();
+  await expect(page.locator('.world-plate-board')).toHaveCSS('aspect-ratio', '2 / 1');
+  await expect.poll(() => page.locator('.world-plate-board').evaluate((element) => element.getAttribute('style')?.includes('--world-map-width: 130%'))).toBe(true);
+  await expect(page.locator('.world-plate-viewport')).toHaveCSS('overflow-x', 'auto');
+  await expect(page.getByLabel(/放置大小 100%/u)).toBeVisible();
+  await expect(page.getByLabel(/放置旋转 0°/u)).toBeVisible();
+  const scale = page.locator('.map-placement-controls input').nth(0);
+  const rotation = page.locator('.map-placement-controls input').nth(1);
+  await scale.focus();
+  for (let index = 0; index < 8; index += 1) await scale.press('ArrowRight');
+  await rotation.focus();
+  await rotation.press('ArrowRight');
+  await rotation.press('ArrowRight');
+  await page.locator('.world-plate-board').click({ position: { x: 300, y: 220 } });
+  await expect(page.getByText(/已添加到地图/u)).toBeVisible();
+  await page.getByRole('button', { name: '清空地图内容' }).click();
+  const dialog = page.getByRole('dialog', { name: '清空图示确认' });
+  await expect(dialog).toBeVisible();
+  await expect(dialog).toContainText('不会永久删除');
+  await dialog.getByRole('button', { name: '确认清空' }).click();
+  await expect(page.getByText(/已清空地图/u)).toBeVisible();
+  const undo = page.getByRole('button', { name: /撤回地图操作/u });
+  await expect(undo).toBeEnabled();
+  await undo.click();
+  await expect(page.getByText(/已撤回：清空地图/u)).toBeVisible();
 });
 
 test('previews and imports a TXT file through the core repository', async ({ page }) => {
@@ -203,6 +264,21 @@ test('creates worldbuilding records and highlights chapter mentions without pers
   await page.getByLabel('别名（逗号或换行分隔）').fill('阿青');
   await page.getByRole('button', { name: '创建设定' }).click();
   await expect(page.getByText('设定已保存。')).toBeVisible();
+  await page.getByRole('button', { name: /新建设定/u }).click();
+  await page.getByLabel('名称').fill('顾寒');
+  await page.getByLabel('摘要与重点').fill('与主角互相试探的盟友');
+  await page.getByRole('button', { name: '创建设定' }).click();
+  await expect(page.getByText('设定已保存。')).toBeVisible();
+  await page.getByRole('button', { name: '时间线、关系图与地图' }).click();
+  await page.getByRole('tab', { name: '人物关系' }).click();
+  await page.getByText('添加人物 / 势力关系', { exact: true }).click();
+  await page.getByLabel('起点人物/势力').selectOption({ label: '沈青' });
+  await page.getByLabel('终点人物/势力').selectOption({ label: '顾寒' });
+  await page.getByRole('button', { name: '保存关系' }).click();
+  const relationshipUndo = page.getByRole('button', { name: /撤回关系操作/u });
+  await expect(relationshipUndo).toBeEnabled();
+  await relationshipUndo.click();
+  await expect(relationshipUndo).toBeDisabled();
   await page.getByRole('button', { name: '关闭大纲与世界设定' }).click();
   const editor = page.locator('.ProseMirror');
   await editor.fill('阿青踏入长街，沈青没有回头。');
@@ -256,10 +332,27 @@ test('keeps graph, DOCX, rankings and backup panels outside the writing long-tas
   await expect(page.getByRole('dialog', { name: '大纲与世界设定' })).toBeVisible();
   await page.getByRole('button', { name: '时间线、关系图与地图' }).click();
   await expect(page.getByRole('button', { name: '甘特图' })).toBeVisible();
+  await page.getByText('添加时间线事件', { exact: true }).click();
+  await page.getByLabel('事件名称').fill('序章异变');
+  await page.getByLabel('开始时间').fill('2026-07-14T10:00');
+  await page.getByLabel('结束时间').fill('2026-07-14T11:00');
+  await page.getByRole('button', { name: '保存事件' }).click();
+  const timelineUndo = page.getByRole('button', { name: /撤回时间线操作/u });
+  await expect(timelineUndo).toBeEnabled();
+  await timelineUndo.click();
+  await expect(timelineUndo).toBeDisabled();
   await page.getByRole('tab', { name: '人物关系' }).click();
   await expect(page.getByText('网状', { exact: true })).toBeVisible();
   await page.getByRole('tab', { name: '地图DIY' }).click();
-  await expect(page.getByRole('application', { name: '可绘制世界地图' })).toBeVisible();
+  const mapBoard = page.getByRole('application', { name: '可绘制世界地图' });
+  await expect(mapBoard).toBeVisible();
+  await page.getByRole('button', { name: '城市', exact: true }).click();
+  await mapBoard.click({ position: { x: 260, y: 180 } });
+  await expect(page.getByText('1 个可编辑图层对象')).toBeVisible();
+  const mapUndo = page.getByRole('button', { name: /撤回地图操作/u });
+  await expect(mapUndo).toBeEnabled();
+  await mapUndo.click();
+  await expect(page.getByText('0 个可编辑图层对象')).toBeVisible();
   await page.getByRole('button', { name: '关闭大纲与世界设定' }).click();
   await page.getByRole('button', { name: '写作工具箱' }).click();
   await page.getByRole('button', { name: '文件与备份' }).click();

@@ -33,6 +33,20 @@ describe('filterTemplates', () => {
     expect(selected.find((item) => item.genre === '宫斗')?.minimumWorldbuilding).toContain('品级权限');
     expect(selected.find((item) => item.genre === '现言甜宠')?.commonMistakes.join('')).toContain('事业线');
   });
+
+  it('gives every genre a complete, genre-matched success example', () => {
+    for (const template of WRITING_TEMPLATES) {
+      expect(template.successExample.caseTitle).toContain(template.genre);
+      expect(template.successExample.genrePromise.length).toBeGreaterThan(35);
+      expect(template.successExample.openingProof.length).toBeGreaterThan(30);
+      expect(template.successExample.mechanismAndCost).toContain(template.specialMechanism);
+      expect(template.successExample.firstArc.length).toBeGreaterThan(30);
+      expect(template.successExample.microInnovation).toContain(template.genre);
+      expect(template.successExample.whyItWorks).toContain(template.genre);
+    }
+    const selected = ['凡人流', '幕后流', '宫斗', '现言甜宠', '规则怪谈'].map((genre) => WRITING_TEMPLATES.find((item) => item.genre === genre)!.successExample.openingProof);
+    expect(new Set(selected).size).toBe(selected.length);
+  });
 });
 
 describe('buildPlanningCard', () => {

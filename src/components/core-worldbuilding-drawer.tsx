@@ -16,10 +16,17 @@ import {
 } from '../lib/core-api';
 import type { ProjectEntity, ProjectEntityKind, ProjectFieldValue } from '../lib/project-model';
 import type { WritingRepository } from '../lib/repository';
+import { HelpTip } from './help-tip';
+import { LocalContentImporter, type ImportApplyMode } from './local-content-importer';
 import { VisualSettingsPanel } from './visual-settings-panel';
 
 type ManageKind = 'outline' | 'chapter-plan' | 'character' | 'location' | 'faction' | 'world' | 'material';
 type FieldDefinition = { key: string; label: string; type: 'text' | 'textarea' | 'number' | 'tags' | 'checkbox' | 'select'; options?: Array<{ value: string; label: string }>; referenceKind?: ProjectEntityKind; chapterSelect?: boolean };
+
+function fieldHelp(kind: ManageKind, definition: FieldDefinition): string {
+  const action = definition.type === 'tags' ? '每行填写一项，便于筛选和复用' : definition.type === 'textarea' ? '用可验证的行动、规则或结果填写，不要只写形容词' : definition.type === 'number' ? '填写可计算的数值，后续用于一致性核对' : definition.type === 'checkbox' ? '勾选后会作为明确状态参与筛选和检查' : definition.type === 'select' ? '从已有选项或关联资料中选择，避免重复建档' : '填写能够直接用于剧情判断的简短信息';
+  return `${definition.label}用于${KIND_INFO.find((item) => item.kind === kind)?.label ?? '当前设定'}的结构化管理；${action}。`;
+}
 
 const KIND_WORKFLOWS: Record<ManageKind, { question: string; steps: string[]; done: string[] }> = {
   outline: { question: '这条大纲如何把前一状态推到一个不可逆的新状态？', steps: ['先定卷末不可逆结果', '倒推阶段目标和必须付出的代价', '用“因为→所以→但是”连接节点', '给伏笔标注埋设与回收位置'], done: ['节点有行动者和选择', '后一节点由前一结果触发', '高潮使用前文已有资源'] },
@@ -126,6 +133,7 @@ export function CoreWorldbuildingDrawer({ directory, user, csrf, onClose }: { di
   const [busy, setBusy] = useState(false);
   const [status, setStatus] = useState('正在读取作品设定…');
   const [pendingDelete, setPendingDelete] = useState<{ entity: CoreProjectEntity; references: CoreEntityReference[] } | null>(null);
+  const [lastDeleted, setLastDeleted] = useState<CoreProjectEntity | null>(null);
   const selected = entities.find((entity) => entity.id === selectedId) ?? null;
   const currentInfo = KIND_INFO.find((item) => item.kind === kind)!;
   const currentWorkflow = KIND_WORKFLOWS[kind];
@@ -146,6 +154,7 @@ export function CoreWorldbuildingDrawer({ directory, user, csrf, onClose }: { di
 
   function clearForm(nextKind = kind) { setKind(nextKind); setSelectedId(null); setTitle(''); setSummary(''); setFields({}); setStatus(''); }
   function setField(key: string, value: ProjectFieldValue) { setFields((current) => ({ ...current, [key]: value })); }
+  function mergeImportedText(current: string, text: string, mode: ImportApplyMode): string { return mode === 'append' && current.trim() ? `${current.replace(/\s+$/u, '')}\n\n${text}` : text; }
 
   async function save() {
     if (!title.trim()) { setStatus('请填写名称。'); return; }
@@ -171,25 +180,37 @@ export function CoreWorldbuildingDrawer({ directory, user, csrf, onClose }: { di
     setBusy(true);
     try {
       await deleteCoreProjectEntity(directory.id, pendingDelete.entity.id, csrf, { reason: '用户从设定面板删除', confirmReferences: true });
-      setPendingDelete(null); clearForm(); await refresh(); setStatus('已移入设定回收站。');
+      setLastDeleted(pendingDelete.entity); setPendingDelete(null); clearForm(); await refresh(); setStatus('已移入设定回收站，可立即撤回。');
     } catch (error) { setStatus(error instanceof Error ? error.message : '删除失败。'); }
     finally { setBusy(false); }
   }
 
   async function restore(entity: CoreProjectEntity) {
     setBusy(true);
-    try { await restoreCoreProjectEntity(directory.id, entity.id, csrf); await refresh(); setStatus('设定已恢复。'); }
+    try { await restoreCoreProjectEntity(directory.id, entity.id, csrf); if (lastDeleted?.id === entity.id) setLastDeleted(null); await refresh(); setStatus('设定已恢复。'); }
     catch (error) { setStatus(error instanceof Error ? error.message : '恢复失败。'); }
     finally { setBusy(false); }
   }
 
-  const repository = useMemo<Pick<WritingRepository, 'listEntities' | 'saveEntity'>>(() => ({
+  const repository = useMemo<Pick<WritingRepository, 'listEntities' | 'saveEntity' | 'softDeleteEntity' | 'restoreEntity'>>(() => ({
     async listEntities(_workId, entityKind, options) { return (await listCoreProjectEntities(directory.id, { kind: entityKind, includeDeleted: options?.includeDeleted })).map((entity) => toLegacyEntity(entity, user.id)); },
     async saveEntity(_workId, input) {
       const saved = input.id
         ? await updateCoreProjectEntity(directory.id, input.id, { title: input.title, summary: input.summary, fields: input.fields }, csrf)
         : await createCoreProjectEntity(directory.id, { kind: input.kind, title: input.title, summary: input.summary, fields: input.fields }, csrf);
       return toLegacyEntity(saved, user.id);
+    },
+    async softDeleteEntity(entityId) {
+      const entity = (await listCoreProjectEntities(directory.id, { includeDeleted: true })).find((item) => item.id === entityId);
+      if (!entity) throw new Error('设定不存在。');
+      await deleteCoreProjectEntity(directory.id, entityId, csrf, { reason: '可视化操作或撤回', confirmReferences: true });
+      return { ...toLegacyEntity(entity, user.id), deletedAt: new Date().toISOString() };
+    },
+    async restoreEntity(entityId) {
+      await restoreCoreProjectEntity(directory.id, entityId, csrf);
+      const entity = (await listCoreProjectEntities(directory.id, { includeDeleted: true })).find((item) => item.id === entityId);
+      if (!entity) throw new Error('设定恢复后无法读取。');
+      return { ...toLegacyEntity(entity, user.id), deletedAt: undefined };
     }
   }), [csrf, directory.id, user.id]);
 
@@ -206,17 +227,26 @@ export function CoreWorldbuildingDrawer({ directory, user, csrf, onClose }: { di
       <nav aria-label="设定栏目"><button aria-current={tab === 'manage' ? 'page' : undefined} onClick={() => setTab('manage')} type="button">资料与大纲</button><button aria-current={tab === 'visual' ? 'page' : undefined} onClick={() => setTab('visual')} type="button">时间线、关系图与地图</button></nav>
       <div className="authoring-drawer-body">
         {tab === 'visual' ? <VisualSettingsPanel chapters={directory.volumes.flatMap((volume) => volume.chapters.map((chapter) => ({ id: chapter.id, title: `${volume.title} / ${chapter.title}` })))} readOnly={!canEdit} repository={repository} workId={directory.id} /> : <div className="worldbuilding-workspace">
-          <aside><div className="world-kind-tabs">{KIND_INFO.map((item) => <button aria-current={kind === item.kind ? 'page' : undefined} key={item.kind} onClick={() => clearForm(item.kind)} type="button">{item.label}</button>)}</div><label className="include-deleted"><input checked={includeDeleted} onChange={(event) => setIncludeDeleted(event.target.checked)} type="checkbox" />显示回收站</label><button disabled={!canEdit} onClick={() => clearForm()} type="button">＋ 新建设定</button><ul>{entities.filter((entity) => entity.kind === kind).map((entity) => <li className={entity.id === selectedId ? 'is-active' : ''} key={entity.id}><button onClick={() => setSelectedId(entity.id)} type="button"><strong>{entity.title}</strong><small>{entity.deletedAt ? '回收站' : entity.summary || currentInfo.label}</small></button>{canEdit ? entity.deletedAt ? <button disabled={busy} onClick={() => void restore(entity)} type="button">恢复</button> : <button disabled={busy} onClick={() => void beginDelete(entity)} type="button">删除</button> : null}</li>)}</ul></aside>
-          <main><div className="world-editor-heading"><div className="project-intro"><p className="eyebrow">{currentInfo.label}</p><p>{canEdit ? currentInfo.description : `只读权限 · ${currentInfo.description}`}</p></div><button disabled={!canEdit || busy || Boolean(selected?.deletedAt)} onClick={() => void save()} type="button">{busy ? '处理中…' : selected ? '保存修改' : '创建设定'}</button></div><section className="entity-workflow"><strong>{currentWorkflow.question}</strong><ol>{currentWorkflow.steps.map((step) => <li key={step}>{step}</li>)}</ol><details><summary>完成检查</summary><ul>{currentWorkflow.done.map((item) => <li key={item}>{item}</li>)}</ul></details></section><label><span>名称</span><input disabled={!canEdit} maxLength={120} onChange={(event) => setTitle(event.target.value)} value={title} /></label><label><span>摘要与重点（先写结论，不写空泛介绍）</span><textarea disabled={!canEdit} maxLength={20000} onChange={(event) => setSummary(event.target.value)} value={summary} /></label><div className="entity-fields">{currentInfo.fields.map((definition) => {
-            const value = fields[definition.key];
-            if (definition.type === 'checkbox') return <label key={definition.key}><span>{definition.label}</span><input checked={value === true} disabled={!canEdit} onChange={(event) => setField(definition.key, event.target.checked)} type="checkbox" /></label>;
-            if (definition.type === 'select') return <label key={definition.key}><span>{definition.label}</span><select disabled={!canEdit} onChange={(event) => setField(definition.key, event.target.value || null)} value={fieldText(value)}><option value="">未指定</option>{optionsFor(definition).map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}</select></label>;
-            if (definition.type === 'textarea' || definition.type === 'tags') return <label key={definition.key}><span>{definition.label}</span><textarea disabled={!canEdit} onChange={(event) => setField(definition.key, definition.type === 'tags' ? tags(event.target.value) : event.target.value)} value={fieldText(value)} /></label>;
-            return <label key={definition.key}><span>{definition.label}</span><input disabled={!canEdit} onChange={(event) => setField(definition.key, definition.type === 'number' ? (event.target.value ? Number(event.target.value) : null) : event.target.value)} type={definition.type === 'number' ? 'number' : 'text'} value={fieldText(value)} /></label>;
-          })}</div><div className="project-form-footer"><span role="status">{status}</span></div></main>
+          <aside><div className="world-kind-tabs">{KIND_INFO.map((item) => <button aria-current={kind === item.kind ? 'page' : undefined} key={item.kind} onClick={() => clearForm(item.kind)} title={item.description} type="button">{item.label}</button>)}</div><label className="include-deleted" title="显示已移入回收站、尚未永久清理的设定"><input checked={includeDeleted} onChange={(event) => setIncludeDeleted(event.target.checked)} type="checkbox" />显示回收站</label><button disabled={!canEdit} onClick={() => clearForm()} title="清空右侧表单并开始一条新的当前类型设定" type="button">＋ 新建设定</button><ul>{entities.filter((entity) => entity.kind === kind && entity.fields.systemType !== 'map-config').map((entity) => <li className={entity.id === selectedId ? 'is-active' : ''} key={entity.id}><button onClick={() => setSelectedId(entity.id)} type="button"><strong>{entity.title}</strong><small>{entity.deletedAt ? '回收站' : entity.summary || currentInfo.label}</small></button>{canEdit ? entity.deletedAt ? <button disabled={busy} onClick={() => void restore(entity)} title="从回收站恢复这条设定" type="button">恢复</button> : <button disabled={busy} onClick={() => void beginDelete(entity)} title="检查引用后移入回收站" type="button">删除</button> : null}</li>)}</ul></aside>
+          <main>
+            <div className="world-editor-heading"><div className="project-intro"><p className="eyebrow field-label-with-actions"><span>{currentInfo.label}</span><HelpTip text={currentInfo.description} /></p><p>{canEdit ? currentInfo.description : `只读权限 · ${currentInfo.description}`}</p></div><div className="world-editor-actions">{selected && !selected.deletedAt && canEdit ? <button className="danger-button" disabled={busy} onClick={() => void beginDelete(selected)} title="检查所有引用后把当前设定移入回收站" type="button">删除此项</button> : null}<button disabled={!canEdit || busy || Boolean(selected?.deletedAt)} onClick={() => void save()} title="保存当前表单；不会自动改写正文" type="button">{busy ? '处理中…' : selected ? '保存修改' : '创建设定'}</button></div></div>
+            <section className="entity-workflow"><strong>{currentWorkflow.question}</strong><ol>{currentWorkflow.steps.map((step) => <li key={step}>{step}</li>)}</ol><details><summary>完成检查</summary><ul>{currentWorkflow.done.map((item) => <li key={item}>{item}</li>)}</ul></details></section>
+            <label><span className="field-label-with-actions"><span>名称</span><HelpTip text="用于目录辨认与搜索，写成一个明确的人、地、组织、规则或大纲节点名称。" /></span><input disabled={!canEdit} maxLength={120} onChange={(event) => setTitle(event.target.value)} value={title} /></label>
+            <div className="importable-entity-field is-wide"><label><span className="field-label-with-actions"><span>摘要与重点（先写结论，不写空泛介绍）</span><HelpTip text="用两三句写清这条设定会怎样改变人物行动、关系或剧情结果。可从本地文件追加或替换。" /></span><textarea disabled={!canEdit} maxLength={20000} onChange={(event) => setSummary(event.target.value)} value={summary} /></label>{canEdit ? <LocalContentImporter compact label="导入摘要" onApply={(text, mode) => setSummary((current) => mergeImportedText(current, text, mode))} /> : null}</div>
+            <div className="entity-fields">{currentInfo.fields.map((definition) => {
+              const value = fields[definition.key];
+              const label = <span className="field-label-with-actions"><span>{definition.label}</span><HelpTip text={fieldHelp(kind, definition)} /></span>;
+              const importer = canEdit && ['text', 'textarea', 'tags'].includes(definition.type) ? <LocalContentImporter compact label={`导入${definition.label}`} onApply={(text, mode) => setField(definition.key, definition.type === 'tags' ? tags(mergeImportedText(fieldText(value), text, mode)) : mergeImportedText(fieldText(value), text, mode))} /> : null;
+              if (definition.type === 'checkbox') return <div className="importable-entity-field" key={definition.key}><label>{label}<input checked={value === true} disabled={!canEdit} onChange={(event) => setField(definition.key, event.target.checked)} type="checkbox" /></label></div>;
+              if (definition.type === 'select') return <div className="importable-entity-field" key={definition.key}><label>{label}<select disabled={!canEdit} onChange={(event) => setField(definition.key, event.target.value || null)} value={fieldText(value)}><option value="">未指定</option>{optionsFor(definition).map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}</select></label></div>;
+              if (definition.type === 'textarea' || definition.type === 'tags') return <div className="importable-entity-field is-wide" key={definition.key}><label>{label}<textarea disabled={!canEdit} onChange={(event) => setField(definition.key, definition.type === 'tags' ? tags(event.target.value) : event.target.value)} value={fieldText(value)} /></label>{importer}</div>;
+              return <div className="importable-entity-field" key={definition.key}><label>{label}<input disabled={!canEdit} onChange={(event) => setField(definition.key, definition.type === 'number' ? (event.target.value ? Number(event.target.value) : null) : event.target.value)} type={definition.type === 'number' ? 'number' : 'text'} value={fieldText(value)} /></label>{importer}</div>;
+            })}</div>
+            <div className="project-form-footer"><span role="status">{status}</span></div>
+          </main>
         </div>}
       </div>
-      <footer><span>{tab === 'visual' ? '自动检查只提示，不修改正文。SVG 导出在浏览器本地完成。' : '删除前会列出全部已知关联，不会级联删除。'}</span><button onClick={onClose} type="button">返回正文</button></footer>
+      <footer><span>{tab === 'visual' ? '自动检查只提示，不修改正文。SVG 导出在浏览器本地完成。' : '删除前会列出全部已知关联，不会级联删除。'}{lastDeleted ? <> 已删除“{lastDeleted.title}”。 <button className="inline-undo-button" disabled={busy} onClick={() => void restore(lastDeleted)} type="button">↶ 撤回删除</button></> : null}</span><button onClick={onClose} type="button">返回正文</button></footer>
     </section>
     {pendingDelete ? <div aria-label="删除关联确认" aria-modal="true" className="entity-delete-dialog" role="dialog"><h2>删除“{pendingDelete.entity.title}”？</h2>{pendingDelete.references.length ? <><p>以下内容仍引用该设定，删除只会移入回收站，不会修改这些引用：</p><ul>{pendingDelete.references.map((reference) => <li key={`${reference.id}-${reference.field}`}>{reference.title}（{reference.kind} · {reference.field}）</li>)}</ul></> : <p>没有发现其他设定引用它。</p>}<div><button onClick={() => setPendingDelete(null)} type="button">取消</button><button disabled={busy} onClick={() => void confirmDelete()} type="button">确认移入回收站</button></div></div> : null}
   </div>;

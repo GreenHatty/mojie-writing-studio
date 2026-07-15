@@ -21,7 +21,7 @@ const PUBLIC_ASSET_PATHS = new Set([
 
 function isPublicAssetRequest(request, pathname) {
   if (request.method !== 'GET' && request.method !== 'HEAD') return false;
-  return pathname.startsWith('/_next/static/') || PUBLIC_ASSET_PATHS.has(pathname);
+  return pathname.startsWith('/_next/static/') || pathname.startsWith('/map-assets/') || PUBLIC_ASSET_PATHS.has(pathname);
 }
 
 export default {
@@ -30,7 +30,7 @@ export default {
     // `run_worker_first` keeps the authenticated root and API under Worker
     // control. Delegate only known public build assets to the static binding so
     // Vinext client chunks never fall through to the application router.
-    if (isPublicAssetRequest(request, pathname)) return env.ASSETS.fetch(request);
+    if (isPublicAssetRequest(request, pathname) && env?.ASSETS?.fetch) return env.ASSETS.fetch(request);
     const operationsResponse = await handleMojieCoreOperationsApi(request, env, ctx);
     if (operationsResponse) return privateResponse(operationsResponse);
     // The foundation routes are isolated while the legacy API remains in its

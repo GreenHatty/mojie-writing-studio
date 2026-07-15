@@ -18,9 +18,13 @@ export const metadata: Metadata = {
 };
 
 export default function RootLayout({ children }: Readonly<{ children: React.ReactNode }>) {
+  const icpNumber = process.env.MOJIE_ICP_NUMBER?.trim();
   return (
     <html lang="zh-CN">
-      <body>{children}</body>
+      <body>
+        {children}
+        {icpNumber ? <a className="icp-footer" href="https://beian.miit.gov.cn/" rel="noreferrer" target="_blank">{icpNumber}</a> : null}
+      </body>
     </html>
   );
 }

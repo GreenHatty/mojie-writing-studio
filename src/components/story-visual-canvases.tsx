@@ -62,6 +62,7 @@ function graphLayout(nodes: GraphNode[], edges: GraphEdge[], view: RelationshipV
 export function StoryRelationshipGraph({ nodes, edges }: { nodes: GraphNode[]; edges: GraphEdge[] }) {
   const [view, setView] = useState<RelationshipView>('network');
   const [manual, setManual] = useState<Record<string, { x: number; y: number }>>({});
+  const [layoutHistory, setLayoutHistory] = useState<Array<Record<string, { x: number; y: number }>>>([]);
   const [dragging, setDragging] = useState<string | null>(null);
   const base = useMemo(() => graphLayout(nodes, edges, view), [edges, nodes, view]);
   const positioned = base.map((node) => ({ ...node, ...(manual[node.id] ?? {}) }));
@@ -73,11 +74,14 @@ export function StoryRelationshipGraph({ nodes, edges }: { nodes: GraphNode[]; e
     setManual((current) => ({ ...current, [dragging]: { x: Math.max(45, Math.min(595, ((event.clientX - rect.left) / rect.width) * 640)), y: Math.max(40, Math.min(380, ((event.clientY - rect.top) / rect.height) * 420)) } }));
   }
 
-  return <section className="story-relationship"><header><div><strong>关系图谱</strong><span>拖动节点调整位置；线宽表示关系强度</span></div><div className="visual-view-switch">{(['network', 'tree', 'sankey'] as const).map((item) => <button aria-pressed={view === item} key={item} onClick={() => { setView(item); setManual({}); }} type="button">{{ network: '网状', tree: '树状', sankey: '流向' }[item]}</button>)}</div></header>
+  function changeView(next: RelationshipView) { if (next === view) return; setView(next); setManual({}); setLayoutHistory([]); }
+  function undoLayout() { const previous = layoutHistory.at(-1); if (!previous) return; setManual(previous); setLayoutHistory((current) => current.slice(0, -1)); }
+
+  return <section className="story-relationship"><header><div><strong>关系图谱</strong><span>拖动节点调整位置；线宽表示关系强度</span></div><div className="visual-view-switch">{(['network', 'tree', 'sankey'] as const).map((item) => <button aria-pressed={view === item} key={item} onClick={() => changeView(item)} title={{ network: '自由网状图，适合查看多向人物关系', tree: '树状层级图，适合组织、家族和师承', sankey: '流向图，适合查看关系或资源影响方向' }[item]} type="button">{{ network: '网状', tree: '树状', sankey: '流向' }[item]}</button>)}<button disabled={!layoutHistory.length} onClick={undoLayout} title="逐次撤回节点拖动或布局切换" type="button">↶ 布局</button></div></header>
     {!nodes.length ? <div className="visual-empty"><strong>先创建人物或势力</strong><span>再添加关系，图谱会自动布局。</span></div> : <svg aria-label="可拖动人物关系图" className="relationship-svg relationship-canvas" onPointerMove={move} onPointerUp={() => setDragging(null)} viewBox="0 0 640 420">
       <defs><marker id="relationship-arrow" markerHeight="8" markerWidth="8" orient="auto" refX="7" refY="4"><path d="M0,0 L8,4 L0,8 Z" /></marker></defs>
       {edges.map((edge) => { const from = byId.get(edge.fromId); const to = byId.get(edge.toId); if (!from || !to) return null; const width = view === 'sankey' ? 2 + (edge.strength ?? 1) * 2 : Math.max(1.5, edge.strength ?? 2); return <g key={edge.id}><path d={`M ${from.x} ${from.y} C ${(from.x + to.x) / 2} ${from.y}, ${(from.x + to.x) / 2} ${to.y}, ${to.x} ${to.y}`} markerEnd="url(#relationship-arrow)" strokeWidth={width} /><text x={(from.x + to.x) / 2} y={(from.y + to.y) / 2 - 7}>{edge.label}</text></g>; })}
-      {positioned.map((node) => <g className="relationship-node" key={node.id} onPointerDown={(event) => { event.currentTarget.setPointerCapture(event.pointerId); setDragging(node.id); }} transform={`translate(${node.x} ${node.y})`}><circle r={node.kind === 'faction' ? 32 : 27} /><text textAnchor="middle" y="4">{node.label.slice(0, 8)}</text><title>{node.label}</title></g>)}
+      {positioned.map((node) => <g className="relationship-node" key={node.id} onPointerDown={(event) => { event.currentTarget.setPointerCapture(event.pointerId); setLayoutHistory((current) => [...current, manual].slice(-80)); setDragging(node.id); }} transform={`translate(${node.x} ${node.y})`}><circle r={node.kind === 'faction' ? 32 : 27} /><text textAnchor="middle" y="4">{node.label.slice(0, 8)}</text><title>{node.label}</title></g>)}
     </svg>}
   </section>;
 }
