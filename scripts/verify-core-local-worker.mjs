@@ -27,7 +27,12 @@ async function tokenDigest(token) {
 }
 
 async function request(path, init = {}) {
-  const response = await fetch(`${origin}${path}`, init);
+  let response;
+  try {
+    response = await fetch(`${origin}${path}`, init);
+  } catch (error) {
+    throw new Error(`Local core request failed: ${init.method ?? 'GET'} ${path}`, { cause: error });
+  }
   const contentType = response.headers.get('content-type') ?? '';
   const body = contentType.includes('application/json') ? await response.json() : await response.text();
   return { response, body };
@@ -43,6 +48,14 @@ async function waitForWorker() {
     await new Promise((resolve) => setTimeout(resolve, 500));
   }
   throw new Error(`Local core worker did not become reachable${lastError ? `: ${lastError.message}` : ''}`);
+}
+
+async function settleWorkerAfterDirectD1Access() {
+  // Wrangler's local D1 CLI can recycle the Miniflare database connection.
+  // Probe the Worker again before the next HTTP assertion so a stale keep-alive
+  // socket cannot turn a successful acceptance step into ECONNRESET.
+  await new Promise((resolve) => setTimeout(resolve, 250));
+  await waitForWorker();
 }
 
 async function main() {
@@ -168,6 +181,7 @@ async function main() {
     if (backupSummary.response.status !== 200 || backupSummary.body.configured !== true || backupSummary.body.targets?.[0]?.target_type !== 'webdav') throw new Error('Backup target summary failed');
     const encryptedTarget = JSON.parse(run(['d1', 'execute', database, '--local', '--config', config, '--command', `SELECT CAST(config_ciphertext AS TEXT) AS ciphertext,CAST(config_iv AS TEXT) AS iv FROM backup_targets WHERE id='${backupTarget.body.targetId}'`, '--json']))[0]?.results?.[0];
     if (!encryptedTarget || JSON.stringify(encryptedTarget).includes('test-only-secret-password') || JSON.stringify(encryptedTarget).includes('test-writer')) throw new Error('Backup credentials were stored in plaintext');
+    await settleWorkerAfterDirectD1Access();
 
     const aiConfig = await request('/api/core/ai/provider', { method: 'PUT', headers, body: JSON.stringify({ provider: 'deepseek', label: '本地核心设定模型', baseUrl: 'https://api.deepseek.com', model: 'deepseek-v4-pro', apiKey: 'test-only-deepseek-api-key-never-plaintext' }) });
     if (aiConfig.response.status !== 200 || aiConfig.body.configured !== true) throw new Error(`Encrypted AI provider configuration failed: ${aiConfig.response.status}`);
@@ -175,6 +189,7 @@ async function main() {
     if (aiSummary.response.status !== 200 || aiSummary.body.config?.model !== 'deepseek-v4-pro' || JSON.stringify(aiSummary.body).includes('test-only-deepseek-api-key')) throw new Error('AI provider summary leaked or omitted its safe metadata');
     const encryptedAi = JSON.parse(run(['d1', 'execute', database, '--local', '--config', config, '--command', 'SELECT CAST(api_key_ciphertext AS TEXT) AS ciphertext,CAST(api_key_iv AS TEXT) AS iv FROM ai_provider_configs LIMIT 1', '--json']))[0]?.results?.[0];
     if (!encryptedAi || JSON.stringify(encryptedAi).includes('test-only-deepseek-api-key')) throw new Error('AI provider key was stored in plaintext');
+    await settleWorkerAfterDirectD1Access();
 
     const migrationId = 'acceptance-migration';
     const migrationSource = { works: [{ id: 'legacy-work', title: '旧格式验收作品', kind: 'long', volumes: [{ id: 'legacy-volume', title: '旧卷', chapters: [{ id: 'legacy-chapter', title: '旧章', content: '<p>旧正文<strong>保留</strong></p>' }] }] }] };
@@ -188,10 +203,12 @@ async function main() {
     if (repeatedExecute.response.status !== 200 || repeatedExecute.body.repeated !== true) throw new Error('Repeated migration execution duplicated imports');
     const migratedChapter = JSON.parse(run(['d1', 'execute', database, '--local', '--config', config, '--command', `SELECT legacy_html,canonical_content FROM chapters WHERE id='migrated:${migrationId}:legacy-work:chapter:legacy-chapter'`, '--json']))[0]?.results?.[0];
     if (!migratedChapter?.legacy_html?.includes('旧正文') || !migratedChapter?.canonical_content?.includes('schemaVersion')) throw new Error('Legacy HTML backup or canonical migration content was lost');
+    await settleWorkerAfterDirectD1Access();
     const migrationRollback = await request(`/api/core/migrations/${migrationId}/rollback`, { method: 'POST', headers });
     if (migrationRollback.response.status !== 200 || migrationRollback.body.status !== 'ROLLED_BACK') throw new Error('Per-work migration rollback failed');
     const rolledBackWork = JSON.parse(run(['d1', 'execute', database, '--local', '--config', config, '--command', `SELECT deleted_at,delete_reason FROM works WHERE id='migrated:${migrationId}:legacy-work'`, '--json']))[0]?.results?.[0];
     if (!rolledBackWork?.deleted_at || rolledBackWork.delete_reason !== 'migration_rollback') throw new Error('Migration rollback did not retain the imported work as a recoverable soft delete');
+    await settleWorkerAfterDirectD1Access();
 
     const writerToken = 'test-only-writer-session-token';
     const writerCsrf = 'test-only-writer-csrf';
@@ -199,6 +216,7 @@ async function main() {
     const expires = new Date(Date.now() + 60 * 60_000).toISOString();
     const absoluteExpires = new Date(Date.now() + 2 * 60 * 60_000).toISOString();
     run(['d1', 'execute', database, '--local', '--config', config, '--command', `INSERT INTO platform_accounts (id, account_identifier, platform_role, password_algorithm, password_iterations, password_salt, password_digest, created_at, updated_at) VALUES ('accept-writer', 'writer-acceptance@example.test', 'WRITER', 'PBKDF2-SHA-256', 600000, X'00', X'00', '${now}', '${now}'); INSERT INTO platform_sessions (id, token_hash, user_id, csrf_state, expires_at, absolute_expires_at, last_seen_at, created_at, updated_at) VALUES ('accept-writer-session', '${await tokenDigest(writerToken)}', 'accept-writer', '${writerCsrf}', '${expires}', '${absoluteExpires}', '${now}', '${now}', '${now}');`]);
+    await settleWorkerAfterDirectD1Access();
     const writerCookie = `mojie-dev-session=${writerToken}; mojie-dev-csrf=${writerCsrf}`;
     const writerHeaders = { Origin: origin, Cookie: writerCookie, 'X-CSRF-Token': writerCsrf, 'Content-Type': 'application/json' };
     const hiddenMigration = await request('/api/core/migrations/preview', { method: 'POST', headers: writerHeaders, body: JSON.stringify({ migrationId, source: migrationSource }) });
@@ -214,6 +232,7 @@ async function main() {
     const hiddenFromWriter = await request(`/api/core/works/${encodeURIComponent(workId)}/entities`, { headers: { Cookie: writerCookie } });
     if (hiddenFromWriter.response.status !== 404) throw new Error('Unrelated writer could read private project entities');
     run(['d1', 'execute', database, '--local', '--config', config, '--command', `INSERT INTO work_access (work_id, user_id, role, created_at) VALUES ('${workId}', 'accept-writer', 'VIEWER', '${now}');`]);
+    await settleWorkerAfterDirectD1Access();
     const visibleToViewer = await request(`/api/core/works/${encodeURIComponent(workId)}/entities`, { headers: { Cookie: writerCookie } });
     if (visibleToViewer.response.status !== 200 || !visibleToViewer.body.entities?.length) throw new Error('Authorized viewer could not read project entities');
     const viewerPublication = await request('/api/core/publications', { method: 'POST', headers: writerHeaders, body: JSON.stringify({ workId, chapterId, platform: 'fanqie' }) });
@@ -221,6 +240,7 @@ async function main() {
     const viewerWrite = await request(`/api/core/works/${encodeURIComponent(workId)}/entities`, { method: 'POST', headers: { Origin: origin, Cookie: writerCookie, 'X-CSRF-Token': writerCsrf, 'Content-Type': 'application/json' }, body: JSON.stringify({ kind: 'character', title: '越权人物', fields: {} }) });
     if (viewerWrite.response.status !== 403) throw new Error('Viewer could write project entities');
     run(['d1', 'execute', database, '--local', '--config', config, '--command', `UPDATE work_access SET role = 'EDITOR' WHERE work_id = '${workId}' AND user_id = 'accept-writer';`]);
+    await settleWorkerAfterDirectD1Access();
     const editorWrite = await request(`/api/core/works/${encodeURIComponent(workId)}/entities`, { method: 'POST', headers: { Origin: origin, Cookie: writerCookie, 'X-CSRF-Token': writerCsrf, 'Content-Type': 'application/json' }, body: JSON.stringify({ kind: 'character', title: '编辑新增人物', fields: {} }) });
     if (editorWrite.response.status !== 201) throw new Error('Authorized editor could not write project entities');
 
@@ -241,10 +261,12 @@ async function main() {
     const afterLogout = await request('/api/core/works', { headers: { Cookie: cookie } });
     if (afterLogout.response.status !== 401) throw new Error('Revoked session retained protected work access');
     process.stdout.write('Local core Worker acceptance passed (auth, encrypted drafts, private writing, worldbuilding, idempotent migration and rollback, manual rankings, publication records, encrypted optional backups, conflicts, and logout revocation).\n');
+  } catch (error) {
+    if (workerOutput) process.stderr.write(workerOutput);
+    throw error;
   } finally {
     if (!worker.killed) worker.kill('SIGTERM');
     if (process.platform === 'win32' && worker.pid) spawnSync('taskkill', ['/pid', String(worker.pid), '/t', '/f'], { stdio: 'ignore' });
-    if (workerOutput && process.exitCode) process.stderr.write(workerOutput);
   }
 }
 

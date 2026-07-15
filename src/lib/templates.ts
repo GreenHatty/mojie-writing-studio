@@ -51,6 +51,8 @@ export type WritingTemplate = {
   commonMistakes: string[];
   homogenizationRisks: string[];
   innovationDirections: string[];
+  fillInWorksheet: Array<{ field: string; prompt: string; example: string }>;
+  expansionBranches: Array<{ direction: string; trigger: string; consequence: string }>;
   successExample: TemplateSuccessExample;
   selfCheck: string[];
   lastReviewedAt: string;
@@ -89,6 +91,13 @@ type TemplateSeed = {
 };
 
 const REVIEW_DATE = '2026-07-11';
+
+const EXAMPLE_TITLES: Record<string, string> = {
+  高武: '《败者训练日志》', 修仙: '《坊市散修账本》', 种田流: '《山谷第一季》', 系统文: '《拒绝任务也有奖励》', 穿越: '《翻译官的边境商队》', 重生: '《改掉第一封信以后》', 脑洞: '《全城只能说真话的一天》', 同人: '《原作地图之外》', 权谋: '《第七码头税册》',
+  都市高武: '《旧城武考：伤病档案》', 东方玄幻: '《照骨碑下》', 异世大陆: '《边境译路》', 王朝争霸: '《粮道以北》', 凡人流: '《青石坊散修账》', 古典仙侠: '《一剑欠众生》', 修仙家族: '《灵田将枯》', 修仙种田: '《谷雨灵植录》', 诡异修仙: '《功法会吃人》', 御兽: '《不合格幼兽观察册》', 灵气复苏: '《地铁末班觉醒者》', 全民觉醒: '《零级职业也要组队》', 幕后流: '《他们都在追查我》', 苟道流: '《活过这次宗门征召》', 反派流: '《恶名到账之前》', 模拟器流: '《第七次人生才是情报》',
+  神豪: '《钱必须花在陌生人身上》', 商战创业: '《第一百个付费客户》', 文娱创作: '《无人影院首映夜》', 学霸科技: '《错误数据不能删除》', 乡村经营: '《冷库建成以前》', 历史穿越: '《县仓没有余粮》', 架空历史: '《新法先过村口》', 科技兴国: '《第一炉合格钢》', 末日生存: '《停电后的第七层》', 星际文明: '《失联殖民星》', 赛博朋克: '《记忆赎回协议》', 无限流: '《副本没有安全屋》', 诸天流: '《只改一件遗憾》', 规则怪谈: '《守则第九条被撕了》', 民俗悬疑: '《山神借走一夜》', 推理破案: '《证词里没有雨》', 游戏制作: '《差评上线以后》', 领主经营: '《荒领先修水渠》', 综漫: '《名场面之外的人》',
+  古言种田: '《小院分家账》', 宫斗: '《尚宫局错了一盏灯》', 宅斗: '《嫁妆账少了三页》', 古代权谋: '《女官递出的第二份公文》', 重生复仇: '《她先救下证人》', 逃荒: '《旱路上的第六口锅》', 流放: '《到北地先搭一间屋》', 古言甜宠: '《婚书之外先谈生意》', 古言虐恋: '《和离书送到边关》', 现言甜宠: '《合租规则第十条》', 豪门总裁: '《合同里没有恋爱条款》', 先婚后爱: '《婚后共同项目》', 破镜重圆: '《重做那次失败采访》', 娱乐圈: '《撤掉热搜以后》', 马甲文: '《她的第三张工作证》', 女性成长: '《重新签下自己的名字》', 年代文: '《票证夹里的录取信》', 真假千金: '《两份户口之外》', 仙侠言情: '《共负一笔天道债》', 兽世: '《旱季迁徙同盟》', 无限流言情: '《副本里不能替她选择》', 快穿: '《先问原主想要什么》', 穿书: '《原书漏写的那个人》', 恶毒女配: '《拒演第三场戏》', 读心: '《听见真心以后》', 弹幕: '《所有人都看见了明天》'
+};
 
 function slug(value: string): string {
   return value
@@ -142,16 +151,31 @@ function makeTemplate(seed: TemplateSeed): WritingTemplate {
     commonMistakes: blueprint.pitfalls,
     homogenizationRisks: [`只复制${seed.genre}热门书名和开场句式`, `把${elements.join('、') || '流行元素'}当装饰而不让它改变决策`, '主角目标、资源路径和对手结构完全沿用同类作品'],
     innovationDirections: [`把主角放进${seed.genre}中少见但可查证的职业或地域`, `改变“${mechanism}”的资源伦理`, `让“${blueprint.limitation}”同时制约人物缺陷`, '用真实行业、生活或地方细节建立不可替代性'],
+    fillInWorksheet: [
+      { field: '主角起点', prompt: `【主角身份】在【${blueprint.world[0]}对应的具体地点】正因【可量化的损失/期限】失去什么？`, example: blueprint.opening[0] ?? blueprint.formula },
+      { field: '第一行动', prompt: `主角不等任务上门，先用【已有技能/关系/资源】做哪件事？这一步如何触发“${blueprint.conflict}”？`, example: blueprint.opening[1] ?? blueprint.formula },
+      { field: '机制闭环', prompt: `把“${mechanism}”写成：输入【什么】→采取【什么行动】→得到【什么反馈】→承担【什么后果】。`, example: `优势能兑现“${blueprint.payoffs[0]}”，同时必须受到“${blueprint.limitation}”约束。` },
+      { field: '对手结构', prompt: `谁从旧规则获利？他掌握【资源/名分/证据/武力】中的哪一项，能怎样具体阻止主角？`, example: blueprint.conflict },
+      { field: '前三章', prompt: `第1章填【异常或损失】；第2章填【第一次验证】；第3章填【主动选择及代价】。`, example: blueprint.opening.join(' → ') },
+      { field: '第一卷', prompt: `依次填写三个可验收结果；每完成一项，都必须改变资源、关系或行动范围。`, example: blueprint.volumeArc.join(' → ') },
+      { field: '专属世界观', prompt: `只补会影响剧情判断的四项规则，不写百科：${blueprint.world.join(' / ')}。`, example: `每条规则各写“普通人如何看见、谁受益、谁执行、怎样钻空子”。` },
+      { field: '微创新', prompt: `保留“${blueprint.promise}”，只替换一个运转变量：【少见职业/地域/伦理/资源来源】。`, example: `让“${blueprint.world[0]}”与“${elements[0] ?? seed.genre}”产生一条同类作品少见但可持续的因果链。` }
+    ],
+    expansionBranches: [
+      { direction: '机制深化线', trigger: `当读者已理解“${mechanism}”`, consequence: `引入“${blueprint.limitation}”的新组合，让原本有效的解法失效，但不临时改规则。` },
+      { direction: '关系重组线', trigger: `当主角兑现“${blueprint.payoffs[0]}”`, consequence: `让受益者、被损害者和旁观者重新站队，把个人冲突升级为组织博弈。` },
+      { direction: '世界扩张线', trigger: `当第一卷完成“${blueprint.volumeArc.at(-1) ?? '阶段目标'}”`, consequence: `只开放与“${blueprint.world.join('、')}”有因果连接的新地图，旧线索继续有效。` }
+    ],
     successExample: {
-      caseTitle: `原创示例策划：《${seed.genre}：${elements[0] ?? '破局'}之后》`,
-      genrePromise: `读者进来要看到“${blueprint.promise}”。示例把它落成一个可检验结果：主角必须完成“${blueprint.volumeArc[0] ?? '第一阶段目标'}”，失败会失去已经拥有的身份、资源或关系，而不是只喊口号。`,
-      openingProof: `开篇不解释设定大全，而是连续执行：${blueprint.opening.join('；')}。读者先看见题材机制怎样改变现实，再逐步理解规则。`,
-      protagonistAction: `主角主动选择“${blueprint.formula}”，这个选择会制造下一步问题；事件由行动和后果相连，而不是靠路人送任务。`,
-      mechanismAndCost: `核心机制是“${mechanism}”，但每次使用都必须碰到“${blueprint.limitation}”。优势负责制造爽点，限制负责让对手有反制空间。`,
-      firstArc: `第一阶段按“${blueprint.volumeArc.join(' → ')}”推进。每个节点都改变资源、认知或人物站队，卷末形成不可逆的新局面。`,
-      payoffProof: `阶段兑现依次落在“${blueprint.payoffs.join('、')}”。每次兑现前先让读者知道目标和阻力，兑现后立刻留下更高一层代价。`,
-      microInnovation: `不改掉${seed.genre}的核心阅读期待，而把主角放进“${seed.genre}中少见但可查证的职业或地域”，并让“${mechanism}”受到新的资源伦理约束；新鲜感来自具体运转方式，不来自临时反转。`,
-      whyItWorks: `它始终围绕${seed.genre}的专属承诺、推进机制和限制展开；开篇能验证、阶段能兑现、长线能升级，同时避开“${blueprint.pitfalls[0] ?? '只堆标签不改剧情'}”。`
+      caseTitle: `${seed.genre}示例：${EXAMPLE_TITLES[seed.genre] ?? `《${seed.genre}·${elements[0] ?? '破局'}实录》`}`,
+      genrePromise: `${blueprint.formula} 读者会连续看到“${blueprint.promise}”，而不是只在简介里出现${seed.genre}标签。`,
+      openingProof: `第1章：${blueprint.opening[0]}；第2章：${blueprint.opening[1]}；第3章：${blueprint.opening[2]}。三章结束时，主角已有明确目标和不能撤回的后果。`,
+      protagonistAction: `主角先执行“${blueprint.opening[1] ?? blueprint.formula}”，结果直接触发“${blueprint.conflict}”；下一场不是新任务，而是上一步行动的追责、反制或资源变化。`,
+      mechanismAndCost: `每个小循环都实际展示“${mechanism}”。一次有效使用应兑现“${blueprint.payoffs[0]}”，但同时留下“${blueprint.limitation}”造成的伤病、债务、关系裂缝或时间损失。`,
+      firstArc: `卷内验收点是“${blueprint.volumeArc.join(' → ')}”。第一项证明主角能行动，第二项改变关系网，第三项迫使主角进入更大范围的${seed.genre}矛盾。`,
+      payoffProof: `本例依次安排“${blueprint.payoffs.join('、')}”：先公布目标和难点，再让主角靠前文已经展示的能力完成，兑现后马上改变资源或站队。`,
+      microInnovation: `保留“${blueprint.promise}”，把“${blueprint.world[0]}”作为主要运转变量，再用“${elements[0] ?? seed.genre}”制造新的资源伦理；微创新改变解题方式，不破坏读者来读${seed.genre}的根本期待。`,
+      whyItWorks: `${seed.genre}的开篇三章、机制循环和卷末目标都能逐项验收，并且${blueprint.world.join('、')}会持续生成新问题；这使故事可扩展，同时避开“${blueprint.pitfalls[0] ?? '只堆标签不改剧情'}”。`
     },
     selfCheck: [`开篇是否实际执行：${blueprint.opening.join('；')}`, `十章内是否兑现：${blueprint.payoffs.join('；')}`, `限制“${blueprint.limitation}”是否真的造成损失`, `第一卷是否完成：${blueprint.volumeArc.join('；')}`],
     lastReviewedAt: REVIEW_DATE,
@@ -274,20 +298,12 @@ export function filterTemplates(templates: WritingTemplate[], filter: TemplateFi
 }
 
 export function buildPlanningCard(template: WritingTemplate, selectedElements: string[] = []): PlanningCard {
+  const keys = ['premise', 'protagonist', 'conflict', 'world', 'firstChapter', 'firstVolume', 'expansion', 'innovation'];
   return {
     templateId: template.id,
     templateName: template.name,
     selectedElements: [...new Set(selectedElements)],
-    sections: [
-      { key: 'premise', title: '一句话故事', prompt: template.storyFormula, value: '' },
-      { key: 'protagonist', title: '主角与核心欲望', prompt: `${template.initialSituation}\n${template.coreDesire}`, value: '' },
-      { key: 'conflict', title: '核心矛盾与限制', prompt: `${template.coreConflict}\n${template.mechanismLimits}`, value: '' },
-      { key: 'world', title: '最低必要世界观', prompt: template.minimumWorldbuilding.join('；'), value: '' },
-      { key: 'firstChapter', title: '第一章任务', prompt: template.firstChapter.join('；'), value: '' },
-      { key: 'firstThree', title: '前三章任务', prompt: template.firstThreeChapters.join('；'), value: '' },
-      { key: 'firstVolume', title: '第一卷任务', prompt: template.firstVolume.join('；'), value: '' },
-      { key: 'innovation', title: '微创新', prompt: template.innovationDirections.join('；'), value: '' }
-    ]
+    sections: template.fillInWorksheet.map((item, index) => ({ key: keys[index] ?? `worksheet-${index}`, title: item.field, prompt: `${item.prompt}\n参考落法：${item.example}`, value: '' }))
   };
 }
 import { blueprintForGenre } from './genre-blueprints';

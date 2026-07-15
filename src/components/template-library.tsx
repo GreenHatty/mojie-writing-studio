@@ -96,6 +96,11 @@ export function TemplateLibrary({ onUseTemplate }: { onUseTemplate?: (template: 
                     <div><dt>常见问题</dt><dd>{template.commonMistakes.join('；')}</dd></div>
                     <div><dt>微创新</dt><dd>{template.innovationDirections.join('；')}</dd></div>
                   </dl>
+                  <section className="template-worksheet">
+                    <header><div><span>可直接填入自己构思</span><h3>{template.genre}专项策划工作表</h3></div><HelpTip text="每一格都引用当前题材自己的机制、限制和卷目标。复制到当前作品后，只需把方括号中的内容替换成你的构思。" /></header>
+                    <ol>{template.fillInWorksheet.map((item) => <li key={item.field}><strong>{item.field}</strong><p>{item.prompt}</p><small>参考落法：{item.example}</small></li>)}</ol>
+                    <div className="template-expansion-branches"><h4>写长后的三条拓展支线</h4>{template.expansionBranches.map((branch) => <article key={branch.direction}><strong>{branch.direction}</strong><span>何时开启：{branch.trigger}</span><p>{branch.consequence}</p></article>)}</div>
+                  </section>
                   <section className="template-success-example">
                     <header><div><span>从承诺到微创新的完整示例</span><h3>{template.successExample.caseTitle}</h3></div><HelpTip text="这是为当前题材原创整理的策划示范，用来展示模板怎样落到故事工程；不是对现有小说的仿写。" /></header>
                     <ol>

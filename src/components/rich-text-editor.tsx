@@ -6,8 +6,10 @@ import { Plugin, PluginKey } from '@tiptap/pm/state';
 import { Decoration, DecorationSet } from '@tiptap/pm/view';
 import { EditorContent, useEditor } from '@tiptap/react';
 import StarterKit from '@tiptap/starter-kit';
-import { useEffect, useRef } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { validateSuggestionApplication, type EditorSelectionSnapshot } from '../lib/collaboration';
+import { plainTextToCanonical } from '../lib/core-project-file';
+import { formatWebficText, type WebficFormattingMode } from '../lib/webfic-formatting';
 
 type RichTextEditorProps = {
   chapterKey: string;
@@ -15,6 +17,8 @@ type RichTextEditorProps = {
   onChange: (html: string, plainText: string, canonicalContent: JSONContent) => void;
   highlightTerms?: string[];
   resetKey?: number;
+  onBeforeAutoFormat?: (mode: WebficFormattingMode) => Promise<boolean | void>;
+  onFormatComplete?: (message: string) => void;
 };
 
 type InsertTextEvent = CustomEvent<{ text: string }>;
@@ -86,9 +90,10 @@ const EntityMentions = Extension.create({
   }
 });
 
-export function RichTextEditor({ chapterKey, content, onChange, highlightTerms = [], resetKey = 0 }: RichTextEditorProps) {
+export function RichTextEditor({ chapterKey, content, onChange, highlightTerms = [], resetKey = 0, onBeforeAutoFormat, onFormatComplete }: RichTextEditorProps) {
   const currentChapterKey = useRef(chapterKey);
   const currentResetKey = useRef(resetKey);
+  const [formatting, setFormatting] = useState(false);
   const editor = useEditor({
     immediatelyRender: false,
     extensions: [
@@ -165,6 +170,24 @@ export function RichTextEditor({ chapterKey, content, onChange, highlightTerms =
 
   if (!editor) return <div className="editor-loading">正在准备编辑器…</div>;
 
+  async function applyWebficFormatting(mode: WebficFormattingMode) {
+    if (!editor || formatting) return;
+    setFormatting(true);
+    try {
+      const allowed = await onBeforeAutoFormat?.(mode);
+      if (allowed === false) return;
+      const result = formatWebficText(editor.getText({ blockSeparator: '\n' }), mode);
+      if (!result.changed) {
+        onFormatComplete?.('当前正文已经符合所选网文排版，无需调整。');
+        return;
+      }
+      editor.commands.setContent(plainTextToCanonical(result.text));
+      onFormatComplete?.(`已按${mode === 'mobile' ? '手机阅读' : '常规网文'}节奏整理为 ${result.formattedParagraphs} 段；只在原句边界分段，没有改写正文。`);
+    } finally {
+      setFormatting(false);
+    }
+  }
+
   return (
     <div className="rich-editor-shell">
       <div aria-label="编辑工具" className="editor-toolbar" role="toolbar">
@@ -180,6 +203,9 @@ export function RichTextEditor({ chapterKey, content, onChange, highlightTerms =
         <button aria-label="清除格式" title="清除选区格式并恢复为正文段落" onClick={() => editor.chain().focus().unsetAllMarks().clearNodes().run()} type="button">Tx</button>
         <button aria-label="撤销" title="撤销上一次正文编辑" onClick={() => editor.chain().focus().undo().run()} type="button">↶</button>
         <button aria-label="重做" title="重做刚撤销的正文编辑" onClick={() => editor.chain().focus().redo().run()} type="button">↷</button>
+        <span className="toolbar-divider" />
+        <button className="editor-format-action" disabled={formatting} onClick={() => void applyWebficFormatting('standard')} title="轻度整理空行，并把过长叙述按每2至3句分段；不改写原句" type="button">常规排版</button>
+        <button className="editor-format-action" disabled={formatting} onClick={() => void applyWebficFormatting('mobile')} title="按手机阅读宽度把过长叙述分成更短段落；对白与标题保持独立" type="button">手机分段</button>
       </div>
       <EditorContent editor={editor} />
     </div>

@@ -6,7 +6,7 @@ import type { ProfileSettingsDto } from './d1-store';
 type ProfileInput = Omit<ProfileSettingsDto, 'updatedAt'>;
 
 const themes = new Set<ProfileInput['theme']>(['paper', 'warm', 'gray', 'dark']);
-const widths = new Set<ProfileInput['editorWidth']>(['narrow', 'comfortable', 'wide']);
+const widths = new Set<ProfileInput['editorWidth']>(['narrow', 'comfortable', 'mobile', 'document', 'wide']);
 
 function valid(input: Partial<ProfileInput>): input is ProfileInput {
   return typeof input.theme === 'string' && themes.has(input.theme as ProfileInput['theme'])

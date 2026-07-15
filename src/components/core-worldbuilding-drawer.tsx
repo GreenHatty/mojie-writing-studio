@@ -133,6 +133,7 @@ export function CoreWorldbuildingDrawer({ directory, user, csrf, onClose }: { di
   const [busy, setBusy] = useState(false);
   const [status, setStatus] = useState('正在读取作品设定…');
   const [pendingDelete, setPendingDelete] = useState<{ entity: CoreProjectEntity; references: CoreEntityReference[] } | null>(null);
+  const [lastDeleted, setLastDeleted] = useState<CoreProjectEntity | null>(null);
   const selected = entities.find((entity) => entity.id === selectedId) ?? null;
   const currentInfo = KIND_INFO.find((item) => item.kind === kind)!;
   const currentWorkflow = KIND_WORKFLOWS[kind];
@@ -179,14 +180,14 @@ export function CoreWorldbuildingDrawer({ directory, user, csrf, onClose }: { di
     setBusy(true);
     try {
       await deleteCoreProjectEntity(directory.id, pendingDelete.entity.id, csrf, { reason: '用户从设定面板删除', confirmReferences: true });
-      setPendingDelete(null); clearForm(); await refresh(); setStatus('已移入设定回收站。');
+      setLastDeleted(pendingDelete.entity); setPendingDelete(null); clearForm(); await refresh(); setStatus('已移入设定回收站，可立即撤回。');
     } catch (error) { setStatus(error instanceof Error ? error.message : '删除失败。'); }
     finally { setBusy(false); }
   }
 
   async function restore(entity: CoreProjectEntity) {
     setBusy(true);
-    try { await restoreCoreProjectEntity(directory.id, entity.id, csrf); await refresh(); setStatus('设定已恢复。'); }
+    try { await restoreCoreProjectEntity(directory.id, entity.id, csrf); if (lastDeleted?.id === entity.id) setLastDeleted(null); await refresh(); setStatus('设定已恢复。'); }
     catch (error) { setStatus(error instanceof Error ? error.message : '恢复失败。'); }
     finally { setBusy(false); }
   }
@@ -228,7 +229,7 @@ export function CoreWorldbuildingDrawer({ directory, user, csrf, onClose }: { di
         {tab === 'visual' ? <VisualSettingsPanel chapters={directory.volumes.flatMap((volume) => volume.chapters.map((chapter) => ({ id: chapter.id, title: `${volume.title} / ${chapter.title}` })))} readOnly={!canEdit} repository={repository} workId={directory.id} /> : <div className="worldbuilding-workspace">
           <aside><div className="world-kind-tabs">{KIND_INFO.map((item) => <button aria-current={kind === item.kind ? 'page' : undefined} key={item.kind} onClick={() => clearForm(item.kind)} title={item.description} type="button">{item.label}</button>)}</div><label className="include-deleted" title="显示已移入回收站、尚未永久清理的设定"><input checked={includeDeleted} onChange={(event) => setIncludeDeleted(event.target.checked)} type="checkbox" />显示回收站</label><button disabled={!canEdit} onClick={() => clearForm()} title="清空右侧表单并开始一条新的当前类型设定" type="button">＋ 新建设定</button><ul>{entities.filter((entity) => entity.kind === kind && entity.fields.systemType !== 'map-config').map((entity) => <li className={entity.id === selectedId ? 'is-active' : ''} key={entity.id}><button onClick={() => setSelectedId(entity.id)} type="button"><strong>{entity.title}</strong><small>{entity.deletedAt ? '回收站' : entity.summary || currentInfo.label}</small></button>{canEdit ? entity.deletedAt ? <button disabled={busy} onClick={() => void restore(entity)} title="从回收站恢复这条设定" type="button">恢复</button> : <button disabled={busy} onClick={() => void beginDelete(entity)} title="检查引用后移入回收站" type="button">删除</button> : null}</li>)}</ul></aside>
           <main>
-            <div className="world-editor-heading"><div className="project-intro"><p className="eyebrow field-label-with-actions"><span>{currentInfo.label}</span><HelpTip text={currentInfo.description} /></p><p>{canEdit ? currentInfo.description : `只读权限 · ${currentInfo.description}`}</p></div><button disabled={!canEdit || busy || Boolean(selected?.deletedAt)} onClick={() => void save()} title="保存当前表单；不会自动改写正文" type="button">{busy ? '处理中…' : selected ? '保存修改' : '创建设定'}</button></div>
+            <div className="world-editor-heading"><div className="project-intro"><p className="eyebrow field-label-with-actions"><span>{currentInfo.label}</span><HelpTip text={currentInfo.description} /></p><p>{canEdit ? currentInfo.description : `只读权限 · ${currentInfo.description}`}</p></div><div className="world-editor-actions">{selected && !selected.deletedAt && canEdit ? <button className="danger-button" disabled={busy} onClick={() => void beginDelete(selected)} title="检查所有引用后把当前设定移入回收站" type="button">删除此项</button> : null}<button disabled={!canEdit || busy || Boolean(selected?.deletedAt)} onClick={() => void save()} title="保存当前表单；不会自动改写正文" type="button">{busy ? '处理中…' : selected ? '保存修改' : '创建设定'}</button></div></div>
             <section className="entity-workflow"><strong>{currentWorkflow.question}</strong><ol>{currentWorkflow.steps.map((step) => <li key={step}>{step}</li>)}</ol><details><summary>完成检查</summary><ul>{currentWorkflow.done.map((item) => <li key={item}>{item}</li>)}</ul></details></section>
             <label><span className="field-label-with-actions"><span>名称</span><HelpTip text="用于目录辨认与搜索，写成一个明确的人、地、组织、规则或大纲节点名称。" /></span><input disabled={!canEdit} maxLength={120} onChange={(event) => setTitle(event.target.value)} value={title} /></label>
             <div className="importable-entity-field is-wide"><label><span className="field-label-with-actions"><span>摘要与重点（先写结论，不写空泛介绍）</span><HelpTip text="用两三句写清这条设定会怎样改变人物行动、关系或剧情结果。可从本地文件追加或替换。" /></span><textarea disabled={!canEdit} maxLength={20000} onChange={(event) => setSummary(event.target.value)} value={summary} /></label>{canEdit ? <LocalContentImporter compact label="导入摘要" onApply={(text, mode) => setSummary((current) => mergeImportedText(current, text, mode))} /> : null}</div>
@@ -245,7 +246,7 @@ export function CoreWorldbuildingDrawer({ directory, user, csrf, onClose }: { di
           </main>
         </div>}
       </div>
-      <footer><span>{tab === 'visual' ? '自动检查只提示，不修改正文。SVG 导出在浏览器本地完成。' : '删除前会列出全部已知关联，不会级联删除。'}</span><button onClick={onClose} type="button">返回正文</button></footer>
+      <footer><span>{tab === 'visual' ? '自动检查只提示，不修改正文。SVG 导出在浏览器本地完成。' : '删除前会列出全部已知关联，不会级联删除。'}{lastDeleted ? <> 已删除“{lastDeleted.title}”。 <button className="inline-undo-button" disabled={busy} onClick={() => void restore(lastDeleted)} type="button">↶ 撤回删除</button></> : null}</span><button onClick={onClose} type="button">返回正文</button></footer>
     </section>
     {pendingDelete ? <div aria-label="删除关联确认" aria-modal="true" className="entity-delete-dialog" role="dialog"><h2>删除“{pendingDelete.entity.title}”？</h2>{pendingDelete.references.length ? <><p>以下内容仍引用该设定，删除只会移入回收站，不会修改这些引用：</p><ul>{pendingDelete.references.map((reference) => <li key={`${reference.id}-${reference.field}`}>{reference.title}（{reference.kind} · {reference.field}）</li>)}</ul></> : <p>没有发现其他设定引用它。</p>}<div><button onClick={() => setPendingDelete(null)} type="button">取消</button><button disabled={busy} onClick={() => void confirmDelete()} type="button">确认移入回收站</button></div></div> : null}
   </div>;

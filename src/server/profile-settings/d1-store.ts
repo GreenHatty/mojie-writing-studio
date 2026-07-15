@@ -2,7 +2,7 @@ export type ProfileSettingsDto = {
   theme: 'paper' | 'warm' | 'gray' | 'dark';
   fontSize: number;
   lineHeight: number;
-  editorWidth: 'narrow' | 'comfortable' | 'wide';
+  editorWidth: 'narrow' | 'comfortable' | 'mobile' | 'document' | 'wide';
   leftColumnWidth: number;
   rightColumnWidth: number;
   updatedAt: string;
@@ -12,7 +12,7 @@ const DEFAULTS: Omit<ProfileSettingsDto, 'updatedAt'> = {
   theme: 'paper',
   fontSize: 18,
   lineHeight: 1.9,
-  editorWidth: 'comfortable',
+  editorWidth: 'document',
   leftColumnWidth: 280,
   rightColumnWidth: 320
 };

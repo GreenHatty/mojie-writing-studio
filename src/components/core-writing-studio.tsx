@@ -54,7 +54,7 @@ const CoreOperationsDrawer = lazy(() => import('./core-operations-drawer').then(
 type SaveState = 'idle' | 'local' | 'saving' | 'saved' | 'offline' | 'conflict' | 'error';
 type RightPanel = 'note' | 'entities' | 'versions' | 'search' | 'trash';
 type Theme = 'paper' | 'warm' | 'gray' | 'dark';
-type EditorWidth = 'narrow' | 'comfortable' | 'wide';
+type EditorWidth = 'mobile' | 'document' | 'wide';
 type LocalDraft = {
   chapterId: string;
   baseRevision: number;
@@ -67,7 +67,7 @@ type LocalDraft = {
 };
 type LocalSettings = { theme: Theme; fontSize: number; lineHeight: number; editorWidth: EditorWidth; leftColumnWidth: number; rightColumnWidth: number };
 
-const DEFAULT_SETTINGS: LocalSettings = { theme: 'paper', fontSize: 18, lineHeight: 1.9, editorWidth: 'comfortable', leftColumnWidth: 280, rightColumnWidth: 320 };
+const DEFAULT_SETTINGS: LocalSettings = { theme: 'paper', fontSize: 18, lineHeight: 1.9, editorWidth: 'document', leftColumnWidth: 280, rightColumnWidth: 320 };
 const EMPTY_DOCUMENT: CanonicalDocument = { type: 'doc', schemaVersion: 1, content: [{ type: 'paragraph' }] };
 
 function countCharacters(value: string): number { return Array.from(value.replace(/\s/gu, '')).length; }
@@ -80,6 +80,14 @@ function errorMessage(error: unknown): string {
     return error.code;
   }
   return error instanceof Error ? error.message : '操作未完成。';
+}
+
+function normalizeSettings(value?: (Partial<Omit<LocalSettings, 'editorWidth'>> & { editorWidth?: string }) | null): Partial<LocalSettings> {
+  if (!value) return {};
+  const legacyWidth = (value as { editorWidth?: string }).editorWidth;
+  const editorWidth: EditorWidth | undefined = legacyWidth === 'narrow' ? 'mobile' : legacyWidth === 'comfortable' ? 'document' : legacyWidth === 'mobile' || legacyWidth === 'document' || legacyWidth === 'wide' ? legacyWidth : undefined;
+  const { editorWidth: _ignored, ...rest } = value;
+  return { ...rest, ...(editorWidth ? { editorWidth } : {}) };
 }
 
 export function CoreWritingStudio({ user, csrf, draftStore, onLogout }: { user: CoreUser; csrf: string; draftStore: UserDraftStore; onLogout: () => void }) {
@@ -310,7 +318,7 @@ export function CoreWritingStudio({ user, csrf, draftStore, onLogout }: { user: 
         ]);
         if (!active) return;
         setWorks(loadedWorks);
-        const restoredSettings = { ...DEFAULT_SETTINGS, ...(remoteSettings ?? {}), ...(localSettings ?? {}) };
+        const restoredSettings = { ...DEFAULT_SETTINGS, ...normalizeSettings(remoteSettings), ...normalizeSettings(localSettings) };
         setSettings(restoredSettings);
         await draftStore.saveSetting('profile-settings', restoredSettings);
         if (remoteStats) { setTodayCount(remoteStats.addedCharacters); setStreakDays(remoteStats.streakDays); }
@@ -503,6 +511,24 @@ export function CoreWritingStudio({ user, csrf, draftStore, onLogout }: { user: 
     catch (error) { setNotice(errorMessage(error)); }
   }
 
+  async function prepareAutomaticFormatting(): Promise<boolean> {
+    if (!chapter) return false;
+    await persistDraft();
+    if (typeof navigator !== 'undefined' && !navigator.onLine) {
+      setNotice('当前离线：排版前原稿已保存在本机加密草稿中，云端版本会在联网后继续同步。');
+      return true;
+    }
+    try {
+      await flushBeforeTransition();
+      await createCoreChapterVersion(chapter.id, '网文排版前', csrf);
+      setVersions(await listCoreChapterVersions(chapter.id));
+      return true;
+    } catch (error) {
+      setNotice(`排版前云端版本暂未建立：${errorMessage(error)}。本地原稿仍已保存，可用编辑器撤销恢复。`);
+      return true;
+    }
+  }
+
   async function restoreVersion(version: CoreChapterVersion): Promise<void> {
     if (!chapter || !window.confirm(`恢复“${version.label ?? version.reason}”吗？当前内容会先保存为恢复前快照。`)) return;
     try {
@@ -593,12 +619,12 @@ export function CoreWritingStudio({ user, csrf, draftStore, onLogout }: { user: 
       <div className="sidebar-heading"><div><p className="eyebrow">目录</p><h1>{directory.title}</h1></div><div className="directory-actions">{canEditDirectory ? <button aria-label="新建分卷" className="quiet-button" disabled={busy} onClick={() => void addVolume()} type="button">＋卷</button> : null}<button aria-label="新建章节" className="icon-button" disabled={busy || !canEditDirectory} onClick={() => void addChapter()} type="button">＋</button></div></div>
       <label className="directory-search"><span className="sr-only">搜索章节</span><input onChange={(event) => setSearch(event.target.value)} placeholder="查找章节标题" value={search} /></label>
       <nav>{directory.volumes.map((volume) => <section className="volume-group" key={volume.id}><div className="volume-heading"><h2>{volume.title}</h2>{canEditDirectory ? <button aria-label={`重命名${volume.title}`} className="chapter-order-button" disabled={busy} onClick={() => void renameVolume(volume.id, volume.title)} type="button">编辑</button> : null}</div>{volume.chapters.filter((item) => !matchingChapters || matchingChapters.has(item.id)).map((item, index, visible) => <div className="chapter-row" key={item.id}><button className={`chapter-link ${item.id === chapter.id ? 'is-active' : ''}`} onClick={() => void (async () => { await flushBeforeTransition(); await loadChapter(item.id); setMobilePanel('none'); })()} type="button"><span>{item.title}</span><small>{formatCount(item.wordCount)}</small></button>{canEditDirectory ? <span className="chapter-order-controls"><button aria-label={`上移${item.title}`} className="chapter-order-button" disabled={busy || index === 0 || visible.length !== volume.chapters.length} onClick={() => void moveChapter(volume.id, item.id, -1)} type="button">↑</button><button aria-label={`下移${item.title}`} className="chapter-order-button" disabled={busy || index === visible.length - 1 || visible.length !== volume.chapters.length} onClick={() => void moveChapter(volume.id, item.id, 1)} type="button">↓</button></span> : null}</div>)}</section>)}</nav>
-      <div className="sidebar-settings"><label><span>主题</span><select onChange={(event) => void updateSettings({ theme: event.target.value as Theme })} value={settings.theme}><option value="paper">纸白</option><option value="warm">暖黄</option><option value="gray">低对比灰</option><option value="dark">深色</option></select></label><label><span>编辑宽度</span><select onChange={(event) => void updateSettings({ editorWidth: event.target.value as EditorWidth })} value={settings.editorWidth}><option value="narrow">窄</option><option value="comfortable">舒适</option><option value="wide">宽</option></select></label><div className="font-controls"><span>字号</span><button aria-label="减小字号" onClick={() => void updateSettings({ fontSize: Math.max(14, settings.fontSize - 1) })} type="button">A−</button><span>{settings.fontSize}</span><button aria-label="增大字号" onClick={() => void updateSettings({ fontSize: Math.min(28, settings.fontSize + 1) })} type="button">A＋</button></div><div className="font-controls"><span>行距</span><button aria-label="减小行距" onClick={() => void updateSettings({ lineHeight: Math.max(1.4, Number((settings.lineHeight - 0.1).toFixed(1))) })} type="button">−</button><span>{settings.lineHeight.toFixed(1)}</span><button aria-label="增大行距" onClick={() => void updateSettings({ lineHeight: Math.min(2.6, Number((settings.lineHeight + 0.1).toFixed(1))) })} type="button">＋</button></div><label className="column-width-control"><span>目录宽度 {settings.leftColumnWidth}px</span><input aria-label="目录栏宽度" max="460" min="220" onChange={(event) => void updateSettings({ leftColumnWidth: Number(event.target.value) })} type="range" value={settings.leftColumnWidth} /></label><label className="column-width-control"><span>工具栏宽度 {settings.rightColumnWidth}px</span><input aria-label="工具栏宽度" max="520" min="260" onChange={(event) => void updateSettings({ rightColumnWidth: Number(event.target.value) })} type="range" value={settings.rightColumnWidth} /></label></div>
+      <div className="sidebar-settings"><label><span>主题</span><select onChange={(event) => void updateSettings({ theme: event.target.value as Theme })} value={settings.theme}><option value="paper">纸白</option><option value="warm">暖黄</option><option value="gray">低对比灰</option><option value="dark">深色</option></select></label><label><span>正文宽幅</span><select onChange={(event) => void updateSettings({ editorWidth: event.target.value as EditorWidth })} title="文档宽幅适合电脑写作；手机阅读宽幅用于预览读者在窄屏上的行长和分段" value={settings.editorWidth}><option value="document">正常文档</option><option value="mobile">手机阅读</option><option value="wide">宽屏校稿</option></select></label><div className="font-controls"><span>字号</span><button aria-label="减小字号" onClick={() => void updateSettings({ fontSize: Math.max(14, settings.fontSize - 1) })} type="button">A−</button><span>{settings.fontSize}</span><button aria-label="增大字号" onClick={() => void updateSettings({ fontSize: Math.min(28, settings.fontSize + 1) })} type="button">A＋</button></div><div className="font-controls"><span>行距</span><button aria-label="减小行距" onClick={() => void updateSettings({ lineHeight: Math.max(1.4, Number((settings.lineHeight - 0.1).toFixed(1))) })} type="button">−</button><span>{settings.lineHeight.toFixed(1)}</span><button aria-label="增大行距" onClick={() => void updateSettings({ lineHeight: Math.min(2.6, Number((settings.lineHeight + 0.1).toFixed(1))) })} type="button">＋</button></div><label className="column-width-control"><span>目录宽度 {settings.leftColumnWidth}px</span><input aria-label="目录栏宽度" max="460" min="220" onChange={(event) => void updateSettings({ leftColumnWidth: Number(event.target.value) })} type="range" value={settings.leftColumnWidth} /></label><label className="column-width-control"><span>工具栏宽度 {settings.rightColumnWidth}px</span><input aria-label="工具栏宽度" max="520" min="260" onChange={(event) => void updateSettings({ rightColumnWidth: Number(event.target.value) })} type="range" value={settings.rightColumnWidth} /></label></div>
     </aside>
     <section aria-label="正文编辑器" className={`editor-stage editor-width-${settings.editorWidth}`}>
       <div className="chapter-heading"><input aria-label="章节标题" defaultValue={chapter.title} key={chapter.id} onBlur={(event) => void renameChapter(event.target.value)} /><div className="chapter-heading-actions">{canEditDirectory ? <LocalContentImporter compact disabled={busy} label="导入本章" onApply={applyImportedChapterText} /> : null}<button className="quiet-button" onClick={() => void createVersion()} title="保存不可变的命名快照，之后可从右栏恢复" type="button">保存版本</button><HelpTip text="正文支持 TXT、Markdown、HTML 和 DOCX 导入。可先预览，再选择追加或替换；替换同样会先写入本地加密草稿。" />{canEditDirectory ? <button className="quiet-button danger-button" disabled={busy} onClick={() => void deleteCurrentChapter()} title="移入回收站，不会立即永久删除" type="button">移到回收站</button> : null}</div></div>
       {notice ? <div className="draft-notice" role="status"><span>{notice}</span><button onClick={() => setNotice('')} type="button">知道了</button></div> : null}
-      <RichTextEditor chapterKey={`${chapter.id}-${chapter.revision}`} content={document} highlightTerms={entityHighlightTerms} onChange={updateEditor} resetKey={editorResetKey} />
+      <RichTextEditor chapterKey={`${chapter.id}-${chapter.revision}`} content={document} highlightTerms={entityHighlightTerms} onBeforeAutoFormat={prepareAutomaticFormatting} onChange={updateEditor} onFormatComplete={setNotice} resetKey={editorResetKey} />
       <footer className="editor-statusbar"><span>{formatCount(liveWordCount)} 字</span><span>全书 {formatCount(totalWordCount)} 字</span><span>本次新增 {formatCount(todayCount)} 字</span><span>段落 {plainText ? plainText.split(/\n+/u).filter(Boolean).length : 0}</span><span>预计阅读 {Math.max(1, Math.ceil(liveWordCount / 500))} 分钟</span><span className={`save-state save-${saveState}`}>{saveLabel[saveState]}</span></footer>
     </section>
     <aside aria-label="章节辅助信息" className={`context-sidebar ${mobilePanel === 'context' ? 'is-mobile-open' : ''}`}>

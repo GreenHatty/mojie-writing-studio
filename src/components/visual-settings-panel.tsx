@@ -55,6 +55,8 @@ export function VisualSettingsPanel({ repository, workId, chapters = [], readOnl
   const [busy, setBusy] = useState(false);
   const [activeLayer, setActiveLayer] = useState('全部图层');
   const [undoHistory, setUndoHistory] = useState<Record<VisualMode, UndoEntry[]>>({ timeline: [], relationships: [], map: [] });
+  const [pendingClear, setPendingClear] = useState<VisualMode | null>(null);
+  const [skipClearWarning, setSkipClearWarning] = useState(false);
 
   const [eventForm, setEventForm] = useState({ title: '', startAt: '', endAt: '', locationId: '', characterIds: [] as string[], chapterIds: [] as string[], predecessorIds: [] as string[], isForeshadowing: false });
   const [relationForm, setRelationForm] = useState({ fromId: '', toId: '', label: '合作', strength: 3 });
@@ -215,6 +217,32 @@ export function VisualSettingsPanel({ repository, workId, chapters = [], readOnl
     });
   }
 
+  function entitiesForClear(targetMode: VisualMode): ProjectEntity[] {
+    if (targetMode === 'timeline') return events;
+    if (targetMode === 'relationships') return relationships.filter((entity) => fieldString(entity, 'edgeKind') !== 'route');
+    return [...locations, ...relationships.filter((entity) => fieldString(entity, 'edgeKind') === 'route')];
+  }
+
+  async function clearMode(targetMode: VisualMode, rememberPreference = false) {
+    const targets = entitiesForClear(targetMode);
+    setPendingClear(null);
+    setSkipClearWarning(false);
+    if (!targets.length) { setStatus('当前图中没有可清空的内容。'); return; }
+    if (rememberPreference && typeof localStorage !== 'undefined') localStorage.setItem(`mojie:skip-visual-clear-warning:${targetMode}`, '1');
+    const label = targetMode === 'timeline' ? '时间线' : targetMode === 'relationships' ? '人物关系图' : '地图';
+    await run(async () => {
+      for (const entity of targets) await repository.softDeleteEntity(entity.id);
+      remember(targetMode, { label: `清空${label}`, steps: targets.map((entity) => ({ action: 'restore' as const, entityId: entity.id })) });
+      setStatus(`已清空${label}的 ${targets.length} 项内容，可立即整体撤回。`);
+    });
+  }
+
+  function requestClear(targetMode: VisualMode) {
+    const skip = typeof localStorage !== 'undefined' && localStorage.getItem(`mojie:skip-visual-clear-warning:${targetMode}`) === '1';
+    if (skip) void clearMode(targetMode);
+    else setPendingClear(targetMode);
+  }
+
   async function addEvent() {
     if (!eventForm.title.trim() || !eventForm.startAt || !eventForm.endAt) {
       setStatus('事件名称、开始时间和结束时间不能为空。');
@@ -313,7 +341,7 @@ export function VisualSettingsPanel({ repository, workId, chapters = [], readOnl
       {mode === 'timeline' ? (
         <div className="timeline-tool">
           <StoryTimeline events={timelineEvents} names={new Map([...characters, ...factions, ...locations].map((entity) => [entity.id, entity.title]))} />
-          <div className="visual-undo-bar"><button disabled={busy || readOnly || !undoHistory.timeline.length} onClick={() => void undoLast('timeline')} title="逐次撤回本次打开面板后对时间线所做的保存操作" type="button">↶ 撤回时间线操作{undoHistory.timeline.length ? `（${undoHistory.timeline.length}）` : ''}</button></div>
+          <div className="visual-undo-bar"><button className="danger-button" disabled={busy || readOnly || !events.length} onClick={() => requestClear('timeline')} title="把当前时间线事件移入回收站；确认后仍可一次撤回" type="button">清空时间线</button><button disabled={busy || readOnly || !undoHistory.timeline.length} onClick={() => void undoLast('timeline')} title="逐次撤回本次打开面板后对时间线所做的保存操作" type="button">↶ 撤回时间线操作{undoHistory.timeline.length ? `（${undoHistory.timeline.length}）` : ''}</button></div>
           <details className="visual-editor-details"><summary>添加时间线事件</summary>
           <div className="visual-form-grid">
             <label><span>事件名称</span><input onChange={(event) => setEventForm((form) => ({ ...form, title: event.target.value }))} value={eventForm.title} /></label>
@@ -335,7 +363,7 @@ export function VisualSettingsPanel({ repository, workId, chapters = [], readOnl
       {mode === 'relationships' ? (
         <div className="relationship-tool">
           <StoryRelationshipGraph edges={relationshipEdges} nodes={relationshipNodes} />
-          <div className="visual-undo-bar"><button disabled={busy || readOnly || !undoHistory.relationships.length} onClick={() => void undoLast('relationships')} title="逐次撤回已保存的关系操作；节点拖动可在图内单独撤回" type="button">↶ 撤回关系操作{undoHistory.relationships.length ? `（${undoHistory.relationships.length}）` : ''}</button></div>
+          <div className="visual-undo-bar"><button className="danger-button" disabled={busy || readOnly || !relationshipEdges.length} onClick={() => requestClear('relationships')} title="只清空关系连线，不删除人物或势力卡；确认后可撤回" type="button">清空关系图</button><button disabled={busy || readOnly || !undoHistory.relationships.length} onClick={() => void undoLast('relationships')} title="逐次撤回已保存的关系操作；节点拖动可在图内单独撤回" type="button">↶ 撤回关系操作{undoHistory.relationships.length ? `（${undoHistory.relationships.length}）` : ''}</button></div>
           <details className="visual-editor-details"><summary>添加人物 / 势力关系</summary>
           <div className="visual-form-grid compact">
             <label><span>起点人物/势力</span><select onChange={(event) => setRelationForm((form) => ({ ...form, fromId: event.target.value }))} value={relationForm.fromId}><option value="">请选择</option>{[...characters, ...factions].map((entity) => <option key={entity.id} value={entity.id}>{entity.title}</option>)}</select></label>
@@ -351,7 +379,7 @@ export function VisualSettingsPanel({ repository, workId, chapters = [], readOnl
 
       {mode === 'map' ? (
         <div className="map-tool">
-          <div className="visual-undo-bar"><button disabled={busy || readOnly || !undoHistory.map.length} onClick={() => void undoLast('map')} title="逐次撤回地图标注、移动、融合、擦除或底图切换" type="button">↶ 撤回地图操作{undoHistory.map.length ? `（${undoHistory.map.length}）` : ''}</button></div>
+          <div className="visual-undo-bar"><button className="danger-button" disabled={busy || readOnly || !mapItems.length} onClick={() => requestClear('map')} title="清空地图上的地点、贴图、笔画和路线，保留当前底图；确认后可撤回" type="button">清空地图内容</button><button disabled={busy || readOnly || !undoHistory.map.length} onClick={() => void undoLast('map')} title="逐次撤回地图标注、移动、融合、擦除或底图切换" type="button">↶ 撤回地图操作{undoHistory.map.length ? `（${undoHistory.map.length}）` : ''}</button></div>
           <WorldPlateMapWorkbench
             backgroundId={mapBackgroundId}
             items={mapItems}
@@ -371,6 +399,10 @@ export function VisualSettingsPanel({ repository, workId, chapters = [], readOnl
             onDelete={async (id) => {
               const entity = locations.find((item) => item.id === id); if (!entity) return;
               await run(async () => { await repository.softDeleteEntity(id); remember('map', { label: `擦除“${entity.title}”`, steps: [{ action: 'restore', entityId: id }] }); setStatus(`已擦除“${entity.title}”，可立即撤回。`); });
+            }}
+            onDeleteMany={async (ids) => {
+              const targets = locations.filter((item) => ids.includes(item.id)); if (!targets.length) return;
+              await run(async () => { for (const entity of targets) await repository.softDeleteEntity(entity.id); remember('map', { label: `橡皮擦连续擦除 ${targets.length} 项`, steps: targets.map((entity) => ({ action: 'restore' as const, entityId: entity.id })) }); setStatus(`橡皮擦已连续擦除 ${targets.length} 项，可一次撤回整笔操作。`); });
             }}
             onMerge={async (sourceId, targetId) => {
               const source = locations.find((item) => item.id === sourceId); const target = locations.find((item) => item.id === targetId); if (!source || !target) return;
@@ -409,6 +441,7 @@ export function VisualSettingsPanel({ repository, workId, chapters = [], readOnl
       ) : null}
 
       <p className="visual-status" role="status">{readOnly ? '当前作品权限为只读；可查看并导出图形，但不能保存设定。' : status}</p>
+      {pendingClear ? <div aria-label="清空图示确认" aria-modal="true" className="visual-clear-dialog" role="dialog"><div><h2>确定清空{pendingClear === 'timeline' ? '时间线' : pendingClear === 'relationships' ? '人物关系图' : '地图内容'}？</h2><p>将把 {entitiesForClear(pendingClear).length} 项内容移入回收站，不会永久删除；本次操作完成后可用“撤回”整体恢复。</p><label><input checked={skipClearWarning} onChange={(event) => setSkipClearWarning(event.target.checked)} type="checkbox" />下次不再提醒（仍会保留撤回）</label><footer><button onClick={() => { setPendingClear(null); setSkipClearWarning(false); }} type="button">取消</button><button className="danger-button" onClick={() => void clearMode(pendingClear, skipClearWarning)} type="button">确认清空</button></footer></div></div> : null}
     </section>
   );
 }
