@@ -5,7 +5,7 @@ import { buildMapSvg, type GraphEdge, type GraphNode } from '../lib/graph-model'
 import { detectCharacterLifeConflicts, detectTimelineConflicts, type ProjectEntity, type TimelineEvent } from '../lib/project-model';
 import type { WritingRepository } from '../lib/repository';
 import { StoryRelationshipGraph, StoryTimeline } from './story-visual-canvases';
-import { WorldPlateMapWorkbench, WORLD_PLATE_SAMPLES, type WorldMapItem, type WorldMapMarkerType } from './world-plate-map-workbench';
+import { WorldPlateMapWorkbench, WORLD_PLATE_SAMPLES, type WorldMapCanvasPreset, type WorldMapCanvasSettings, type WorldMapItem, type WorldMapMarkerType } from './world-plate-map-workbench';
 
 type VisualSettingsPanelProps = {
   repository: Pick<WritingRepository, 'listEntities' | 'saveEntity' | 'softDeleteEntity' | 'restoreEntity'>;
@@ -31,6 +31,14 @@ function fieldNumber(entity: ProjectEntity, key: string, fallback: number): numb
 function fieldStrings(entity: ProjectEntity, key: string): string[] {
   const value = entity.fields[key];
   return Array.isArray(value) ? value.filter((item): item is string => typeof item === 'string') : [];
+}
+
+function canvasPreset(value: string): WorldMapCanvasPreset {
+  return value === 'wide' || value === 'panorama' || value === 'tall' ? value : 'standard';
+}
+
+function clamp(value: number, min: number, max: number): number {
+  return Math.max(min, Math.min(max, value));
 }
 
 function downloadSvg(svg: string, fileName: string): void {
@@ -175,6 +183,11 @@ export function VisualSettingsPanel({ repository, workId, chapters = [], readOnl
   const mapSvg = useMemo(() => buildMapSvg(mapNodes, mapEdges, { width: 640, height: 420, title: '作品地图' }), [mapEdges, mapNodes]);
   const mapConfig = materials.find((entity) => fieldString(entity, 'systemType') === 'map-config') ?? null;
   const mapBackgroundId = (mapConfig ? fieldString(mapConfig, 'backgroundId') : '') || WORLD_PLATE_SAMPLES[0].id;
+  const mapCanvasSettings: WorldMapCanvasSettings = {
+    preset: canvasPreset(mapConfig ? fieldString(mapConfig, 'canvasPreset') : ''),
+    widthPercent: clamp(mapConfig ? fieldNumber(mapConfig, 'canvasWidthPercent', 100) : 100, 100, 200),
+    backgroundScale: clamp(mapConfig ? fieldNumber(mapConfig, 'backgroundScale', 100) : 100, 55, 100)
+  };
   const mapItems = useMemo<WorldMapItem[]>(() => locations.map((entity) => ({
     id: entity.id,
     title: entity.title,
@@ -186,12 +199,12 @@ export function VisualSettingsPanel({ repository, workId, chapters = [], readOnl
     rotation: fieldNumber(entity, 'rotation', 0)
   })), [locations]);
 
-  async function run(action: () => Promise<void>) {
+  async function run(action: () => Promise<void>, options: { refresh?: boolean } = {}) {
     setBusy(true);
     setStatus('');
     try {
       await action();
-      await refresh();
+      if (options.refresh !== false) await refresh();
     } catch (error) {
       setStatus(error instanceof Error ? error.message : '操作失败。');
     } finally {
@@ -382,36 +395,47 @@ export function VisualSettingsPanel({ repository, workId, chapters = [], readOnl
           <div className="visual-undo-bar"><button className="danger-button" disabled={busy || readOnly || !mapItems.length} onClick={() => requestClear('map')} title="清空地图上的地点、贴图、笔画和路线，保留当前底图；确认后可撤回" type="button">清空地图内容</button><button disabled={busy || readOnly || !undoHistory.map.length} onClick={() => void undoLast('map')} title="逐次撤回地图标注、移动、融合、擦除或底图切换" type="button">↶ 撤回地图操作{undoHistory.map.length ? `（${undoHistory.map.length}）` : ''}</button></div>
           <WorldPlateMapWorkbench
             backgroundId={mapBackgroundId}
+            canvasSettings={mapCanvasSettings}
             items={mapItems}
             onBackgroundChange={async (backgroundId) => {
               await run(async () => {
                 const saved = await repository.saveEntity(workId, { id: mapConfig?.id, kind: 'material', title: '地图画布配置', summary: '系统保存的地图底图选择', fields: { ...(mapConfig?.fields ?? {}), systemType: 'map-config', backgroundId } });
+                setMaterials((current) => [...current.filter((entity) => entity.id !== saved.id), saved]);
                 remember('map', { label: `切换底图为“${WORLD_PLATE_SAMPLES.find((item) => item.id === backgroundId)?.label ?? backgroundId}”`, steps: mapConfig ? [{ action: 'update', entityId: mapConfig.id, before: mapConfig }] : [{ action: 'delete', entityId: saved.id }] });
                 setStatus('题材底图已保存。');
-              });
+              }, { refresh: false });
+            }}
+            onCanvasChange={async (settings) => {
+              await run(async () => {
+                const saved = await repository.saveEntity(workId, { id: mapConfig?.id, kind: 'material', title: '地图画布配置', summary: '系统保存的地图底图、幅面与拓界设置', fields: { ...(mapConfig?.fields ?? {}), systemType: 'map-config', backgroundId: mapBackgroundId, canvasPreset: settings.preset, canvasWidthPercent: settings.widthPercent, backgroundScale: settings.backgroundScale } });
+                setMaterials((current) => [...current.filter((entity) => entity.id !== saved.id), saved]);
+                remember('map', { label: '调整地图边界与幅面', steps: mapConfig ? [{ action: 'update', entityId: mapConfig.id, before: mapConfig }] : [{ action: 'delete', entityId: saved.id }] });
+                setStatus('地图幅面与扩展边界已保存。');
+              }, { refresh: false });
             }}
             onCreate={async (input) => {
               await run(async () => {
                 const saved = await repository.saveEntity(workId, { kind: 'location', title: input.title, fields: { x: input.x, y: input.y, markerType: input.markerType as WorldMapMarkerType, path: input.path ?? [], scale: input.scale ?? 1, rotation: input.rotation ?? 0, layer: activeLayer === '全部图层' ? '默认层' : activeLayer } });
+                setLocations((current) => [...current, saved]);
                 remember('map', { label: `添加“${input.title}”`, steps: [{ action: 'delete', entityId: saved.id }] }); setStatus(`${input.title}已添加到地图。`);
-              });
+              }, { refresh: false });
             }}
             onDelete={async (id) => {
               const entity = locations.find((item) => item.id === id); if (!entity) return;
-              await run(async () => { await repository.softDeleteEntity(id); remember('map', { label: `擦除“${entity.title}”`, steps: [{ action: 'restore', entityId: id }] }); setStatus(`已擦除“${entity.title}”，可立即撤回。`); });
+              await run(async () => { await repository.softDeleteEntity(id); setLocations((current) => current.filter((item) => item.id !== id)); remember('map', { label: `擦除“${entity.title}”`, steps: [{ action: 'restore', entityId: id }] }); setStatus(`已擦除“${entity.title}”，可立即撤回。`); }, { refresh: false });
             }}
             onDeleteMany={async (ids) => {
               const targets = locations.filter((item) => ids.includes(item.id)); if (!targets.length) return;
-              await run(async () => { for (const entity of targets) await repository.softDeleteEntity(entity.id); remember('map', { label: `橡皮擦连续擦除 ${targets.length} 项`, steps: targets.map((entity) => ({ action: 'restore' as const, entityId: entity.id })) }); setStatus(`橡皮擦已连续擦除 ${targets.length} 项，可一次撤回整笔操作。`); });
+              await run(async () => { for (const entity of targets) await repository.softDeleteEntity(entity.id); setLocations((current) => current.filter((item) => !ids.includes(item.id))); remember('map', { label: `橡皮擦连续擦除 ${targets.length} 项`, steps: targets.map((entity) => ({ action: 'restore' as const, entityId: entity.id })) }); setStatus(`橡皮擦已连续擦除 ${targets.length} 项，可一次撤回整笔操作。`); }, { refresh: false });
             }}
             onMerge={async (sourceId, targetId) => {
               const source = locations.find((item) => item.id === sourceId); const target = locations.find((item) => item.id === targetId); if (!source || !target) return;
-              await run(async () => { await repository.saveEntity(workId, { id: target.id, kind: target.kind, title: target.title, summary: target.summary, fields: { ...target.fields, scale: Math.min(2.4, fieldNumber(target, 'scale', 1) + .25), mergedFrom: [...fieldStrings(target, 'mergedFrom'), source.id] } }); await repository.softDeleteEntity(source.id); remember('map', { label: `融合“${source.title}”与“${target.title}”`, steps: [{ action: 'update', entityId: target.id, before: target }, { action: 'restore', entityId: source.id }] }); setStatus('同类贴图已融合；源贴图保留在回收站，可撤回。'); });
+              await run(async () => { const saved = await repository.saveEntity(workId, { id: target.id, kind: target.kind, title: target.title, summary: target.summary, fields: { ...target.fields, scale: Math.min(2.4, fieldNumber(target, 'scale', 1) + .25), mergedFrom: [...fieldStrings(target, 'mergedFrom'), source.id] } }); await repository.softDeleteEntity(source.id); setLocations((current) => current.filter((item) => item.id !== source.id).map((item) => item.id === target.id ? saved : item)); remember('map', { label: `融合“${source.title}”与“${target.title}”`, steps: [{ action: 'update', entityId: target.id, before: target }, { action: 'restore', entityId: source.id }] }); setStatus('同类贴图已融合；源贴图保留在回收站，可撤回。'); }, { refresh: false });
             }}
             onUpdate={async (id, patch) => {
               const entity = locations.find((item) => item.id === id); if (!entity) return;
               const { title: nextTitle, ...fieldPatch } = patch;
-              await run(async () => { await repository.saveEntity(workId, { id: entity.id, kind: entity.kind, title: nextTitle ?? entity.title, summary: entity.summary, fields: { ...entity.fields, ...fieldPatch } }); remember('map', { label: `调整“${entity.title}”`, steps: [{ action: 'update', entityId: entity.id, before: entity }] }); setStatus(`已调整“${entity.title}”。`); });
+              await run(async () => { const saved = await repository.saveEntity(workId, { id: entity.id, kind: entity.kind, title: nextTitle ?? entity.title, summary: entity.summary, fields: { ...entity.fields, ...fieldPatch } }); setLocations((current) => current.map((item) => item.id === entity.id ? saved : item)); remember('map', { label: `调整“${entity.title}”`, steps: [{ action: 'update', entityId: entity.id, before: entity }] }); setStatus(`已调整“${entity.title}”。`); }, { refresh: false });
             }}
             readOnly={readOnly}
           />

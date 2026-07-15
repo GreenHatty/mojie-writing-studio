@@ -154,6 +154,13 @@ test('adjusts map placement and clears then restores a map stroke', async ({ pag
   await page.getByRole('button', { name: '大纲与设定' }).click();
   await page.getByRole('button', { name: '时间线、关系图与地图' }).click();
   await page.getByRole('tab', { name: '地图DIY' }).click();
+  await page.getByRole('button', { name: /横向拓界/u }).click();
+  await expect(page.getByText('工作区宽度 130%')).toBeVisible();
+  await page.getByRole('button', { name: '应用画布' }).click();
+  await expect(page.getByText('地图幅面与扩展边界已保存。')).toBeVisible();
+  await expect(page.locator('.world-plate-board')).toHaveCSS('aspect-ratio', '2 / 1');
+  await expect.poll(() => page.locator('.world-plate-board').evaluate((element) => element.getAttribute('style')?.includes('--world-map-width: 130%'))).toBe(true);
+  await expect(page.locator('.world-plate-viewport')).toHaveCSS('overflow-x', 'auto');
   await expect(page.getByLabel(/放置大小 100%/u)).toBeVisible();
   await expect(page.getByLabel(/放置旋转 0°/u)).toBeVisible();
   const scale = page.locator('.map-placement-controls input').nth(0);

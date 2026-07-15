@@ -12,15 +12,25 @@
   --editor-line-height: 1.9;
   --left-column-width: 280px;
   --right-column-width: 360px;
+  --control-height: 38px;
+  --radius-sm: 8px;
+  --radius-md: 11px;
+  --focus-ring: 0 0 0 3px color-mix(in srgb, var(--accent) 22%, transparent);
 }
 
 * { box-sizing: border-box; }
 html, body { min-height: 100%; }
-body { margin: 0; color: var(--ink); background: var(--canvas); font-family: "Noto Serif SC", "Songti SC", "Microsoft YaHei", serif; }
+body { margin: 0; color: var(--ink); background: var(--canvas); font-family: "Noto Serif SC", "Songti SC", "Microsoft YaHei", serif; text-rendering: optimizeLegibility; -webkit-font-smoothing: antialiased; }
 button, input, select, textarea { font: inherit; }
-button { cursor: pointer; }
+button { cursor: pointer; user-select: none; transition: border-color .16s ease, background-color .16s ease, color .16s ease, opacity .16s ease, box-shadow .16s ease; }
 button:disabled { cursor: not-allowed; opacity: 0.65; }
-input, select, textarea { color: var(--ink); }
+button:not(.world-map-item):active:not(:disabled) { transform: translateY(1px); }
+input, select, textarea { color: var(--ink); transition: border-color .16s ease, background-color .16s ease, box-shadow .16s ease; }
+:where(button, input, select, textarea, summary, [tabindex]):focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; box-shadow: var(--focus-ring); }
+::selection { color: var(--ink); background: color-mix(in srgb, var(--accent-soft) 82%, white); }
+
+.icp-footer { position: fixed; z-index: 35; left: 50%; bottom: max(5px, env(safe-area-inset-bottom)); max-width: calc(100vw - 24px); overflow: hidden; padding: 3px 9px; border: 1px solid color-mix(in srgb, var(--line) 70%, transparent); border-radius: 999px; color: var(--muted); background: color-mix(in srgb, var(--panel) 88%, transparent); backdrop-filter: blur(8px); transform: translateX(-50%); white-space: nowrap; text-overflow: ellipsis; font: 10px/1.4 "Microsoft YaHei", sans-serif; text-decoration: none; }
+.icp-footer:hover { color: var(--accent); border-color: color-mix(in srgb, var(--accent) 40%, var(--line)); }
 
 .sr-only { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0, 0, 0, 0); white-space: nowrap; }
 .eyebrow { margin: 0 0 8px; color: var(--accent); font: 600 12px/1.2 "Microsoft YaHei", sans-serif; letter-spacing: 0.14em; }
@@ -451,6 +461,7 @@ input, select, textarea { color: var(--ink); }
   .brand-lockup > span:last-child, .work-identity span, .network-state { display: none; }
   .work-identity { flex: 1; padding-left: 10px; }
   .topbar-actions { gap: 6px; }
+  .topbar-actions button, .mobile-more-menu button, .mobile-panel-button, .mobile-more-button { min-height: 40px; }
   .mobile-panel-button { display: inline-flex; align-items: center; }
   .topbar-actions > .quiet-button { display: none; }
   .mobile-more-button { display: inline-flex; align-items: center; }
@@ -471,6 +482,10 @@ input, select, textarea { color: var(--ink); }
   .operations-section > header, .publication-recording li, .backup-target-list li, .backup-object-list li { align-items: stretch; flex-direction: column; }
 .operations-section details form, .publication-copy-grid, .ranking-snapshot, .publication-recording, .ranking-live-picker { grid-template-columns: 1fr; }
   .publication-recording h4, .publication-recording ul, .publication-recording > p { grid-column: auto; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after { scroll-behavior: auto !important; transition-duration: .01ms !important; animation-duration: .01ms !important; animation-iteration-count: 1 !important; }
 }
 
 .pwa-update-notice { position: fixed; right: 1rem; bottom: 1rem; z-index: 1000; max-width: min(28rem, calc(100vw - 2rem)); padding: .8rem 1rem; border: 1px solid var(--line); border-radius: .75rem; background: var(--panel); box-shadow: var(--shadow); color: var(--ink); font-size: .88rem; }

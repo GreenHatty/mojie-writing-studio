@@ -7,6 +7,10 @@ on:
         description: Type DEPLOY_MOJIE to provision and deploy production
         required: true
         type: string
+      custom_domain:
+        description: Optional custom hostname already added to this Cloudflare account (no scheme or path)
+        required: false
+        type: string
 
 concurrency:
   group: cloudflare-production
@@ -27,6 +31,8 @@ jobs:
       CLOUDFLARE_WORKER_NAME: ${{ vars.MOJIE_WORKER_NAME || 'mojie-writing-studio' }}
       CLOUDFLARE_D1_DATABASE_NAME: ${{ vars.MOJIE_D1_DATABASE_NAME || 'mojie-writing-studio' }}
       APP_ORIGIN: ${{ vars.MOJIE_APP_ORIGIN }}
+      CUSTOM_DOMAIN: ${{ inputs.custom_domain }}
+      MOJIE_ICP_NUMBER: ${{ vars.MOJIE_ICP_NUMBER }}
       OWNER_INITIALIZATION_KEY: ${{ secrets.OWNER_INITIALIZATION_KEY || secrets.MOJIE_ADMIN_TOKEN }}
       LOCAL_DRAFT_KEK: ${{ secrets.LOCAL_DRAFT_KEK }}
       MOJIE_BACKUP_MASTER_KEY: ${{ secrets.MOJIE_BACKUP_MASTER_KEY }}
@@ -100,7 +106,18 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          if [[ -z "$APP_ORIGIN" ]]; then
+          if [[ -n "$CUSTOM_DOMAIN" ]]; then
+            CUSTOM_DOMAIN="$(CUSTOM_DOMAIN="$CUSTOM_DOMAIN" node --input-type=module -e '
+              const value = (process.env.CUSTOM_DOMAIN || "").trim().toLowerCase();
+              const url = new URL(`https://${value}`);
+              if (!value || url.hostname !== value || url.port || url.pathname !== "/" || /[\\s/?#]/u.test(value)) {
+                throw new Error("custom_domain must be a bare HTTPS hostname without a scheme, port, path or wildcard");
+              }
+              process.stdout.write(value);
+            ')"
+            APP_ORIGIN="https://${CUSTOM_DOMAIN}"
+            echo "CUSTOM_DOMAIN=$CUSTOM_DOMAIN" >> "$GITHUB_ENV"
+          elif [[ -z "$APP_ORIGIN" ]]; then
             subdomain_json="$(curl --fail --silent --show-error --header "Authorization: Bearer ${CLOUDFLARE_API_TOKEN}" "https://api.cloudflare.com/client/v4/accounts/${CLOUDFLARE_ACCOUNT_ID}/workers/subdomain")"
             workers_subdomain="$(SUBDOMAIN_JSON="$subdomain_json" node --input-type=module -e '
               const value = JSON.parse(process.env.SUBDOMAIN_JSON || "{}");
@@ -143,6 +160,23 @@ jobs:
           npm run test:worker-entry
           npm run test:core-worker-local
 
+      - name: Configure optional custom domain
+        if: env.CUSTOM_DOMAIN != ''
+        shell: bash
+        run: |
+          set -euo pipefail
+          node --input-type=module -e '
+            import { readFileSync, writeFileSync } from "node:fs";
+            const path = "dist/wrangler.json";
+            const config = JSON.parse(readFileSync(path, "utf8"));
+            const pattern = process.env.CUSTOM_DOMAIN;
+            config.routes = [
+              ...(Array.isArray(config.routes) ? config.routes.filter((route) => route?.pattern !== pattern) : []),
+              { pattern, custom_domain: true }
+            ];
+            writeFileSync(path, `${JSON.stringify(config, null, 2)}\n`);
+          '
+
       - name: Deploy Worker and managed secrets
         id: deploy
         uses: cloudflare/wrangler-action@v3
@@ -165,16 +199,16 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          [[ "$DEPLOYMENT_URL" == "$APP_ORIGIN" ]]
+          TARGET_URL="$APP_ORIGIN"
           ready=0
           root_status=000
           session_status=000
           draft_status=000
           cache_control_ok=0
           for attempt in {1..30}; do
-            root_status="$(curl --silent --output /dev/null --write-out '%{http_code}' "$DEPLOYMENT_URL/" || true)"
-            session_status="$(curl --silent --output /tmp/mojie-session.json --dump-header /tmp/mojie-session.headers --write-out '%{http_code}' "$DEPLOYMENT_URL/api/core/auth/session" || true)"
-            draft_status="$(curl --silent --output /dev/null --write-out '%{http_code}' "$DEPLOYMENT_URL/api/core/auth/draft-key" || true)"
+            root_status="$(curl --silent --output /dev/null --write-out '%{http_code}' "$TARGET_URL/" || true)"
+            session_status="$(curl --silent --output /tmp/mojie-session.json --dump-header /tmp/mojie-session.headers --write-out '%{http_code}' "$TARGET_URL/api/core/auth/session" || true)"
+            draft_status="$(curl --silent --output /dev/null --write-out '%{http_code}' "$TARGET_URL/api/core/auth/draft-key" || true)"
             cache_control_ok=0
             if grep --ignore-case --quiet '^cache-control: no-store, private' /tmp/mojie-session.headers 2>/dev/null; then
               cache_control_ok=1
@@ -189,7 +223,7 @@ jobs:
             echo "::error::Production smoke failed after propagation retries (root=$root_status session=$session_status draft=$draft_status cache=$cache_control_ok)"
             exit 1
           fi
-          MOJIE_DEPLOYMENT_URL="$DEPLOYMENT_URL" node scripts/verify-deployed-assets.mjs
+          MOJIE_DEPLOYMENT_URL="$TARGET_URL" node scripts/verify-deployed-assets.mjs
 
       - name: Deployment summary
         env:
@@ -203,7 +237,12 @@ jobs:
             echo "- R2: not enabled or used"
             echo "- DOCX: browser IndexedDB plus manual download"
             echo "- Automatic external backup: WebDAV/S3-compatible after user configuration"
-            echo "- URL: ${DEPLOYMENT_URL}"
+            echo "- Worker deployment URL: ${DEPLOYMENT_URL}"
+            echo "- Public application origin: ${APP_ORIGIN}"
+            if [[ -n "$CUSTOM_DOMAIN" ]]; then
+              echo "- Custom domain: ${CUSTOM_DOMAIN}"
+              echo "- ICP display: ${MOJIE_ICP_NUMBER:-not configured}"
+            fi
             echo "- All D1 migrations were applied with Cloudflare's migration backup boundary."
             echo "- OWNER_INITIALIZATION_KEY, LOCAL_DRAFT_KEK and MOJIE_BACKUP_MASTER_KEY were stored as Worker secrets."
             echo "- APP_ORIGIN: ${APP_ORIGIN}"
